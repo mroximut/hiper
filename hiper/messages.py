@@ -1,20 +1,39 @@
+import os
 import datetime as dt
 from typing import Optional
+
+# Simple i18n layer. Set via set_language() or HIPER_LANG env var.
+_LANG: str = os.environ.get("HIPER_LANG", "en")
+
+
+def set_language(lang: str) -> None:
+    global _LANG
+    _LANG = lang or "en"
 
 
 def time_of_day_message(now: dt.datetime) -> str:
     hour = now.hour
+    texts = {
+        "en": {
+            "morning": "Good morning — set your intention and start small.",
+            "afternoon": "Good afternoon — keep momentum, one focused block at a time.",
+            "evening": "Good evening — wrap up with clarity, avoid new rabbit holes.",
+            "late": "Late hours — protect energy; short, deliberate focus wins.",
+        },
+        # "tr": { ... }
+    }
+    t = texts.get(_LANG, texts["en"])
     if 5 <= hour < 12:
-        return "Good morning — set your intention and start small."
+        return t["morning"]
     if 12 <= hour < 17:
-        return "Good afternoon — keep momentum, one focused block at a time."
+        return t["afternoon"]
     if 17 <= hour < 22:
-        return "Good evening — wrap up with clarity, avoid new rabbit holes."
-    return "Late hours — protect energy; short, deliberate focus wins."
+        return t["evening"]
+    return t["late"]
 
 
 def elapsed_message(seconds: int) -> str | None:
-    milestones = {
+    en_milestones = {
         60: "1 min — settling in.",
         5 * 60: "5 min — friction fades.",
         10 * 60: "10 min — you're in.",
@@ -25,11 +44,19 @@ def elapsed_message(seconds: int) -> str | None:
         45 * 60: "45 min — powerful block, plan your next step.",
         60 * 60: "60 min — strong hour, write a quick summary.",
     }
+    milestones_by_lang = {
+        "en": en_milestones,
+        # "tr": { ... }
+    }
+    milestones = milestones_by_lang.get(_LANG, en_milestones)
     return milestones.get(seconds)
 
 
 def instructions_line() -> str:
-    return "Press Space to pause."
+    texts = {
+        "en": "Press Space to pause.",
+    }
+    return texts.get(_LANG, texts["en"])
 
 
 def started_at_line(start_time: dt.datetime) -> str:
@@ -37,42 +64,105 @@ def started_at_line(start_time: dt.datetime) -> str:
 
 
 def saved_session_line(formatted_duration: str) -> str:
-    return f"Saved session: {formatted_duration}"
+    templates = {
+        "en": "Saved session: {duration}",
+    }
+    tmpl = templates.get(_LANG, templates["en"])
+    return tmpl.format(duration=formatted_duration)
 
 
 def cancelled_line() -> str:
-    return "Session cancelled; nothing saved."
+    texts = {
+        "en": "Session cancelled; nothing saved.",
+    }
+    return texts.get(_LANG, texts["en"])
 
 
 def exited_without_saving_line() -> str:
-    return "Exited without saving."
+    texts = {
+        "en": "Exited without saving.",
+    }
+    return texts.get(_LANG, texts["en"])
 
 
 def interrupted_line() -> str:
-    return "Interrupted. Use --auto-save to save on Ctrl+C."
+    texts = {
+        "en": "Interrupted. Use --auto-save to save on Ctrl+C.",
+    }
+    return texts.get(_LANG, texts["en"])
 
 
-def paused_line() -> str:
-    return "Paused. (save | discard | resume | quit)"
+def paused_line(current_time: dt.datetime) -> str:
+    templates = {
+        "en": "Paused at {time}. (save | discard | resume | quit)",
+    }
+    tmpl = templates.get(_LANG, templates["en"])
+    return tmpl.format(time=current_time.strftime('%H:%M:%S'))
 
 
 def command_prompt() -> str:
-    return "> "
+    prompts = {
+        "en": "> ",
+    }
+    return prompts.get(_LANG, prompts["en"])
 
 
 def saved_path_line(path: str) -> str:
-    return f"Saved to: {path}"
+    templates = {
+        "en": "Saved to: {path}",
+    }
+    tmpl = templates.get(_LANG, templates["en"])
+    return tmpl.format(path=path)
 
 
 def stats_header(name_filter: Optional[str] = None) -> str:
     if name_filter:
-        return f"Statistics for {name_filter}"
-    return "Statistics"
+        templates = {"en": "Statistics {name}"}
+        tmpl = templates.get(_LANG, templates["en"])
+        return tmpl.format(name=name_filter)
+    texts = {"en": "Statistics"}
+    return texts.get(_LANG, texts["en"])
 
 
 def stats_line(key: str, value: str) -> str:
+    # Keep key/value formatting simple and language-agnostic
     return f"{key}: {value}"
 
 
 def resuming_line(pause_duration_formatted: str, resume_time: dt.datetime) -> str:
-    return f"Paused for {pause_duration_formatted} — resuming at {resume_time.strftime('%H:%M:%S')}\n"
+    templates = {
+        "en": "Paused for {pause} — resuming at {time}\n",
+    }
+    tmpl = templates.get(_LANG, templates["en"])
+    return tmpl.format(pause=pause_duration_formatted, time=resume_time.strftime('%H:%M:%S'))
+
+
+# Errors and notices
+def invalid_duration(message: str) -> str:
+    templates = {
+        "en": "Invalid duration: {msg}",
+    }
+    tmpl = templates.get(_LANG, templates["en"])
+    return tmpl.format(msg=message)
+
+
+def invalid_start(message: str) -> str:
+    templates = {
+        "en": "Invalid start: {msg}",
+    }
+    tmpl = templates.get(_LANG, templates["en"])
+    return tmpl.format(msg=message)
+
+
+def invalid_end(message: str) -> str:
+    templates = {
+        "en": "Invalid end: {msg}",
+    }
+    tmpl = templates.get(_LANG, templates["en"])
+    return tmpl.format(msg=message)
+
+
+# To add translations:
+# - Create entries for your language code (e.g., "tr") alongside "en" in the
+#   dictionaries above (templates/texts/prompts).
+# - Or set HIPER_LANG=tr in your environment, or run with --lang tr (see cli).

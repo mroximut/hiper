@@ -70,6 +70,7 @@ def postfokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--start", "-s", help="Start time (ISO or HH:MM). Default: infer from now - duration")
     p.add_argument("--end", "-e", help="End time (ISO or HH:MM). If omitted, infer from start + duration")
     p.add_argument("--name", "-n", help="Session name/title. With no --duration, filters statistics to this name.", default=None)
+    p.add_argument("--withnames", action="store_true", help="When showing statistics, also show per-name breakdown")
 
 
 def _format_hms(seconds: int) -> str:
@@ -98,6 +99,7 @@ def _print_statistics(name_filter: Optional[str] = None) -> int:
     week_seconds = sum(r["duration"] for r in rows if r["start"] >= week_start)
     month_seconds = sum(r["duration"] for r in rows if r["start"] >= month_start)
     avg_seconds = total_seconds // total_sessions if total_sessions else 0
+    print("--------------------------------")
     print(msgs.stats_line("sessions", str(total_sessions)))
     print(msgs.stats_line("total", _format_hms(total_seconds)))
     print(msgs.stats_line("avg", _format_hms(avg_seconds)))
@@ -107,14 +109,37 @@ def _print_statistics(name_filter: Optional[str] = None) -> int:
     return 0
 
 
+def _print_statistics_by_name() -> int:
+    rows = storage.load_sessions_csv()
+    print(msgs.stats_header("by name"))
+    if not rows:
+        print(msgs.stats_line("sessions", "0"))
+        return 0
+    agg = {}
+    for r in rows:
+        name = (r.get("name") or "").strip()
+        entry = agg.setdefault(name, {"sessions": 0, "total": 0})
+        entry["sessions"] += 1
+        entry["total"] += int(r.get("duration", 0))
+    items = sorted(agg.items(), key=lambda kv: kv[1]["total"], reverse=True)
+    for name, data in items:
+        label = name if name else "(unnamed)"
+        print("--------------------------------")
+        print(msgs.stats_line(f"{label} sessions", str(data["sessions"])))
+        print(msgs.stats_line(f"{label} total", _format_hms(data["total"])))
+    return 0
+
+
 def postfokus_run(args: argparse.Namespace) -> int:
     if not args.duration:
-        # No duration -> show statistics, optionally filtered by name
+        # No duration -> show statistics
+        if args.withnames and not args.name:
+            return _print_statistics_by_name()
         return _print_statistics(args.name or None)
     try:
         duration_s = _parse_duration(args.duration)
     except Exception as e:
-        print(f"Invalid duration: {e}")
+        print(msgs.invalid_duration(str(e)))
         return 2
     # Parse optional end first if provided
     end: Optional[dt.datetime] = None
@@ -123,7 +148,7 @@ def postfokus_run(args: argparse.Namespace) -> int:
             # Reuse start parser semantics (ISO or HH:MM today)
             end = _parse_start(args.end, duration_s)
         except Exception as e:
-            print(f"Invalid end: {e}")
+            print(msgs.invalid_end(str(e)))
             return 2
     # Parse or infer start
     try:
@@ -135,7 +160,7 @@ def postfokus_run(args: argparse.Namespace) -> int:
             else:
                 start = _parse_start(None, duration_s)
     except Exception as e:
-        print(f"Invalid start: {e}")
+        print(msgs.invalid_start(str(e)))
         return 2
     # Infer end if not provided
     if end is None:
@@ -150,7 +175,7 @@ def postfokus_run(args: argparse.Namespace) -> int:
 register_command(
     Command(
         name="postfokus",
-        help="Add a past focus session (duration, optional start/name)",
+        help="Show statistics or add a past focus session (duration, optional start/name)",
         description="Record a past focus session by providing duration and optional start time/name.",
         configure_parser=postfokus_configure_parser,
         run=postfokus_run,

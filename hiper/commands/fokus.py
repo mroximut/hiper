@@ -142,7 +142,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                     _finalize_render()
                     _restore_mode(fd, old)
                     fd, old = None, None
-                    print(msgs.paused_line())
+                    print(msgs.paused_line(current_time=now))
                     continue
                 else:
                     continue
