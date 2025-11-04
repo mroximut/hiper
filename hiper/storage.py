@@ -3,9 +3,22 @@ import os
 import datetime as dt
 from typing import List, Dict, Optional
 
+from . import config
 
-DATA_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "hiper")
-os.makedirs(DATA_DIR, exist_ok=True)
+
+def get_data_dir() -> str:
+    """Get the data directory (from config or default)"""
+    data_dir = config.get_data_dir()
+    os.makedirs(data_dir, exist_ok=True)
+    return data_dir
+
+
+def invalidate_cache() -> None:
+    """Invalidate storage cache (e.g., after savedir change)"""
+    config.invalidate_cache()
+
+
+DATA_DIR = get_data_dir()
 
 SESSIONS_CSV = os.path.join(DATA_DIR, "sessions.csv")
 
@@ -18,8 +31,11 @@ def _ensure_csv_header(path: str) -> None:
 
 
 def save_session_csv(name: str, start: dt.datetime, end: dt.datetime, duration_seconds: int) -> str:
-    _ensure_csv_header(SESSIONS_CSV)
-    with open(SESSIONS_CSV, "a", newline="", encoding="utf-8") as f:
+    # Re-get data dir in case it changed
+    data_dir = get_data_dir()
+    sessions_csv = os.path.join(data_dir, "sessions.csv")
+    _ensure_csv_header(sessions_csv)
+    with open(sessions_csv, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
             name or "",
@@ -27,14 +43,16 @@ def save_session_csv(name: str, start: dt.datetime, end: dt.datetime, duration_s
             end.isoformat(),
             str(duration_seconds),
         ])
-    return SESSIONS_CSV
+    return sessions_csv
 
 
 def load_sessions_csv() -> List[Dict[str, object]]:
-    if not os.path.exists(SESSIONS_CSV) or os.path.getsize(SESSIONS_CSV) == 0:
+    data_dir = get_data_dir()
+    sessions_csv = os.path.join(data_dir, "sessions.csv")
+    if not os.path.exists(sessions_csv) or os.path.getsize(sessions_csv) == 0:
         return []
     rows: List[Dict[str, object]] = []
-    with open(SESSIONS_CSV, "r", newline="", encoding="utf-8") as f:
+    with open(sessions_csv, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             try:

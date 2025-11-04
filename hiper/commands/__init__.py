@@ -22,14 +22,6 @@ def register_command(cmd: Command) -> None:
 def load_builtin_commands() -> None:
     # Importing fokus registers it via side effect
     # Keep imports local to avoid import-time side effects in non-CLI contexts
-    try:
-        from . import fokus  # noqa: F401  # pylint: disable=unused-import
-    except Exception:
-        # Avoid crashing CLI construction if a built-in command fails to import
-        pass
-    try:
-        from . import postfokus  # noqa: F401  # pylint: disable=unused-import
-    except Exception:
-        pass
+    from . import fokus, postfokus, set  # noqa: F401  # pylint: disable=unused-import
 
 

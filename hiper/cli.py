@@ -13,7 +13,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--lang",
-        help="Language code for messages (e.g., en, tr). Overrides HIPER_LANG",
+        help="Language code for messages",
         default=None,
     )
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")

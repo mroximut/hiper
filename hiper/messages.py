@@ -1,14 +1,29 @@
+import json
 import os
 import datetime as dt
 from typing import Optional
 
-# Simple i18n layer. Set via set_language() or HIPER_LANG env var.
-_LANG: str = os.environ.get("HIPER_LANG", "en")
+from . import config
+
+
+def _load_lang_from_config() -> str:
+    return config.get_config("lang", "en")
+
+
+# Simple i18n layer. Set via set_language()
+_LANG: str = _load_lang_from_config()
 
 
 def set_language(lang: str) -> None:
     global _LANG
     _LANG = lang or "en"
+
+
+def save_language(lang: str) -> None:
+    """Persist language setting to config file"""
+    lang = lang or "en"
+    config.set_config("lang", lang)
+    set_language(lang)
 
 
 def time_of_day_message(now: dt.datetime) -> str:
@@ -162,7 +177,15 @@ def invalid_end(message: str) -> str:
     return tmpl.format(msg=message)
 
 
+def language_set(lang: str) -> str:
+    templates = {
+        "en": "Language set to: {lang}",
+    }
+    tmpl = templates.get(_LANG, templates["en"])
+    return tmpl.format(lang=lang)
+
+
 # To add translations:
 # - Create entries for your language code (e.g., "tr") alongside "en" in the
 #   dictionaries above (templates/texts/prompts).
-# - Or set HIPER_LANG=tr in your environment, or run with --lang tr (see cli).
+
