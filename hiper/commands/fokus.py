@@ -13,6 +13,7 @@ from typing import Optional, Tuple
 from . import Command, register_command
 from .. import messages as msgs
 from .. import storage
+from .. import config
 
 
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "hiper")
@@ -80,10 +81,20 @@ def _print_header(start_time: dt.datetime) -> None:
     print()
 
 
-def _tick_render(elapsed_s: int) -> None:
+def _tick_render(elapsed_s: int, paused: bool = False) -> None:
+    clock_enabled = config.get_config("clock", True)
     msg = _elapsed_message(elapsed_s)
-    timer = _format_duration(elapsed_s)
-    line = f"⏱  {timer}"
+    
+    if not clock_enabled and not paused:
+        # Show dots for each minute when clock is false and running
+        minutes = elapsed_s // 60
+        dots = "." * minutes
+        line = f"⏱  {dots}" if dots else "⏱  "
+    else:
+        # Show normal clock format when clock is enabled or when paused
+        timer = _format_duration(elapsed_s)
+        line = f"⏱  {timer}"
+    
     if msg:
         line += f"  —  {msg}"
     # Carriage return update without flooding lines
@@ -118,16 +129,36 @@ def fokus_run(args: argparse.Namespace) -> int:
     pause_started: Optional[dt.datetime] = None
     fd, old = _set_raw_mode()
     saved = False
+    
+    # Initial render
+    _tick_render(0, paused)
+    
     try:
         last_whole = -1
+        last_minute = -1
         while True:
             now = dt.datetime.now()
             if paused:
                 elapsed = accumulated
             else:
                 elapsed = accumulated + int((now - run_started).total_seconds())
-            if not paused and elapsed != last_whole:
-                _tick_render(elapsed)
+            current_minute = elapsed // 60
+            
+            # When clock is false and running, update display every minute
+            clock_enabled = config.get_config("clock", True)
+            if not paused:
+                if not clock_enabled:
+                    # Update when minute changes
+                    if current_minute != last_minute:
+                        _tick_render(elapsed, paused)
+                        last_minute = current_minute
+                elif elapsed != last_whole:
+                    # Normal behavior: update every second
+                    _tick_render(elapsed, paused)
+                    last_whole = elapsed
+            elif paused and elapsed != last_whole:
+                # # When paused, always show normal time format
+                # _tick_render(elapsed, paused)
                 last_whole = elapsed
 
             if not paused:
@@ -139,6 +170,10 @@ def fokus_run(args: argparse.Namespace) -> int:
                     accumulated += int((now - run_started).total_seconds())
                     paused = True
                     pause_started = now
+                    # Render clock format one more time before pausing (if clock was false)
+                    clock_enabled = config.get_config("clock", True)
+                    if not clock_enabled:
+                        _tick_render(accumulated, paused=True)
                     _finalize_render()
                     _restore_mode(fd, old)
                     fd, old = None, None
@@ -175,6 +210,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                     run_started = resume_now
                     pause_started = None
                     last_whole = -1
+                    last_minute = -1
                     continue
                 if cmd in ("quit", "exit", "q"):
                     _finalize_render()

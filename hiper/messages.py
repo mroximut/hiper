@@ -27,6 +27,7 @@ def save_language(lang: str) -> None:
 
 
 def time_of_day_message(now: dt.datetime) -> str:
+    return ""
     hour = now.hour
     texts = {
         "en": {
@@ -48,6 +49,7 @@ def time_of_day_message(now: dt.datetime) -> str:
 
 
 def elapsed_message(seconds: int) -> str | None:
+    return ""
     en_milestones = {
         60: "1 min — settling in.",
         5 * 60: "5 min — friction fades.",
@@ -109,7 +111,7 @@ def interrupted_line() -> str:
 
 def paused_line(current_time: dt.datetime) -> str:
     templates = {
-        "en": "Paused at {time}. (save | discard | resume | quit)",
+        "en": "Paused at {time}.", #(save | discard | resume | quit)",
     }
     tmpl = templates.get(_LANG, templates["en"])
     return tmpl.format(time=current_time.strftime('%H:%M:%S'))
@@ -146,7 +148,7 @@ def stats_line(key: str, value: str) -> str:
 
 def resuming_line(pause_duration_formatted: str, resume_time: dt.datetime) -> str:
     templates = {
-        "en": "Paused for {pause} — resuming at {time}\n",
+        "en": "Paused for {pause}, resuming at {time}",
     }
     tmpl = templates.get(_LANG, templates["en"])
     return tmpl.format(pause=pause_duration_formatted, time=resume_time.strftime('%H:%M:%S'))

@@ -10,6 +10,7 @@ def set_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--nick", help="Your nickname/name")
     p.add_argument("--savedir", help="Directory to save sessions CSV (absolute path)")
     p.add_argument("--gemini_api", help="Gemini API key")
+    p.add_argument("--clock", type=str, help="Show clock display (true/false)")
     p.add_argument("--show", action="store_true", help="Show current settings")
 
 
@@ -20,6 +21,7 @@ def set_run(args: argparse.Namespace) -> int:
         nick = config.get_config("nick", "")
         savedir = config.get_config("savedir", "")
         gemini_api = config.get_config("gemini_api", "")
+        clock = config.get_config("clock", True)
         # Mask API key
         if gemini_api:
             gemini_api = gemini_api[:4] + "..." + gemini_api[-4:] if len(gemini_api) > 8 else "***"
@@ -28,6 +30,7 @@ def set_run(args: argparse.Namespace) -> int:
         print(f"  nick: {nick or '(not set)'}")
         print(f"  savedir: {savedir or '(default)'}")
         print(f"  gemini_api: {gemini_api or '(not set)'}")
+        print(f"  clock: {clock}")
         return 0
     
     # Set values
@@ -62,11 +65,21 @@ def set_run(args: argparse.Namespace) -> int:
         config.set_config("gemini_api", api_key)
         updated.append("gemini_api=***")
     
+    if args.clock is not None:
+        clock_str = args.clock.strip().lower()
+        if clock_str in ("true", "false"):
+            clock_value = clock_str == "true"
+            config.set_config("clock", clock_value)
+            updated.append(f"clock={clock_value}")
+        else:
+            print(f"Error: clock must be 'true' or 'false', got: {clock_str}")
+            return 1
+    
     if updated:
         print(f"Updated: {', '.join(updated)}")
     else:
         print("No settings specified. Use --show to see current settings.")
-        print("Available options: --lang, --nick, --savedir, --gemini_api")
+        print("Available options: --lang, --nick, --savedir, --gemini_api, --clock")
     
     return 0
 
