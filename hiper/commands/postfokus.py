@@ -73,14 +73,6 @@ def postfokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--withnames", action="store_true", help="When showing statistics, also show per-name breakdown")
 
 
-def _format_hms(seconds: int) -> str:
-    minutes, secs = divmod(int(seconds), 60)
-    hours, minutes = divmod(minutes, 60)
-    if hours:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    return f"{minutes:02d}:{secs:02d}"
-
-
 def _print_statistics(name_filter: Optional[str] = None) -> int:
     rows = storage.load_sessions_csv()
     if name_filter:
@@ -101,11 +93,11 @@ def _print_statistics(name_filter: Optional[str] = None) -> int:
     avg_seconds = total_seconds // total_sessions if total_sessions else 0
     print("--------------------------------")
     print(msgs.stats_line("sessions", str(total_sessions)))
-    print(msgs.stats_line("total", _format_hms(total_seconds)))
-    print(msgs.stats_line("avg", _format_hms(avg_seconds)))
-    print(msgs.stats_line("today", _format_hms(today_seconds)))
-    print(msgs.stats_line("week", _format_hms(week_seconds)))
-    print(msgs.stats_line("month", _format_hms(month_seconds)))
+    print(msgs.stats_line("total", storage.format_hms(total_seconds)))
+    print(msgs.stats_line("avg", storage.format_hms(avg_seconds)))
+    print(msgs.stats_line("today", storage.format_hms(today_seconds)))
+    print(msgs.stats_line("week", storage.format_hms(week_seconds)))
+    print(msgs.stats_line("month", storage.format_hms(month_seconds)))
     return 0
 
 
@@ -126,7 +118,7 @@ def _print_statistics_by_name() -> int:
         label = name if name else "(unnamed)"
         print("--------------------------------")
         print(msgs.stats_line(f"{label} sessions", str(data["sessions"])))
-        print(msgs.stats_line(f"{label} total", _format_hms(data["total"])))
+        print(msgs.stats_line(f"{label} total", storage.format_hms(data["total"])))
     return 0
 
 
@@ -167,7 +159,7 @@ def postfokus_run(args: argparse.Namespace) -> int:
         end = start + dt.timedelta(seconds=duration_s)
     path = storage.save_session_csv(args.name or "", start, end, duration_s)
 
-    print(msgs.saved_session_line(_format_hms(duration_s)))
+    print(msgs.saved_session_line(storage.format_hms(duration_s)))
     print(msgs.saved_path_line(path))
     return 0
 

@@ -89,7 +89,7 @@ def _tick_render(elapsed_s: int, paused: bool = False) -> None:
         # Show dots for each minute when clock is false and running
         minutes = elapsed_s // 60
         dots = "." * minutes
-        line = f"⏱  {dots}" if dots else "⏱  "
+        line = f"⏱  {dots}{minutes}" if dots else "⏱  "
     else:
         # Show normal clock format when clock is enabled or when paused
         timer = _format_duration(elapsed_s)

@@ -27,7 +27,7 @@ def _ensure_csv_header(path: str) -> None:
     if not os.path.exists(path) or os.path.getsize(path) == 0:
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["name", "start", "end", "duration"])  # duration in seconds
+            writer.writerow(["name", "start", "end", "duration", "duration_formatted"])  # duration in seconds
 
 
 def save_session_csv(name: str, start: dt.datetime, end: dt.datetime, duration_seconds: int) -> str:
@@ -42,9 +42,17 @@ def save_session_csv(name: str, start: dt.datetime, end: dt.datetime, duration_s
             start.isoformat(),
             end.isoformat(),
             str(duration_seconds),
+            format_hms(duration_seconds),
         ])
     return sessions_csv
 
+
+def format_hms(seconds: int) -> str:
+    minutes, secs = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
 
 def load_sessions_csv() -> List[Dict[str, object]]:
     data_dir = get_data_dir()
