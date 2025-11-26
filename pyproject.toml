@@ -1,0 +1,8 @@
+[tool.pyright]
+typeCheckingMode = "strict"
+include = ["hiper"]
+exclude = ["**/__pycache__", "**/node_modules"]
+
+[tool.ruff]
+line-length = 88
+indent-width = 4

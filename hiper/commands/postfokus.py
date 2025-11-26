@@ -2,8 +2,9 @@ import argparse
 import datetime as dt
 from typing import Optional
 
-from . import Command, register_command
-from .. import storage, messages as msgs
+from .. import messages as msgs
+from .. import storage
+from . import Command
 
 
 def _parse_duration(s: str) -> int:
@@ -12,9 +13,7 @@ def _parse_duration(s: str) -> int:
         raise ValueError("empty duration")
     total = 0
     num = ""
-    unit = "m"  # default minutes if plain number
     i = 0
-    has_unit = False
     while i < len(s):
         ch = s[i]
         if ch.isdigit():
@@ -32,7 +31,6 @@ def _parse_duration(s: str) -> int:
             else:
                 total += val
             num = ""
-            has_unit = True
             i += 1
             continue
         raise ValueError(f"unexpected character '{ch}' in duration")
@@ -66,11 +64,32 @@ def _parse_start(s: Optional[str], duration_s: int) -> dt.datetime:
 
 
 def postfokus_configure_parser(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--duration", "-d", help="Duration (e.g., 25m, 1h30m, 1500s). Omit to show statistics (optionally filter by --name).")
-    p.add_argument("--start", "-s", help="Start time (ISO or HH:MM). Default: infer from now - duration")
-    p.add_argument("--end", "-e", help="End time (ISO or HH:MM). If omitted, infer from start + duration")
-    p.add_argument("--name", "-n", help="Session name/title. With no --duration, filters statistics to this name.", default=None)
-    p.add_argument("--withnames", action="store_true", help="When showing statistics, also show per-name breakdown")
+    p.add_argument(
+        "--duration",
+        "-d",
+        help="Duration (e.g., 25m, 1h30m, 1500s). Omit to show statistics (optionally filter by --name).",
+    )
+    p.add_argument(
+        "--start",
+        "-s",
+        help="Start time (ISO or HH:MM). Default: infer from now - duration",
+    )
+    p.add_argument(
+        "--end",
+        "-e",
+        help="End time (ISO or HH:MM). If omitted, infer from start + duration",
+    )
+    p.add_argument(
+        "--name",
+        "-n",
+        help="Session name/title. With no --duration, filters statistics to this name.",
+        default=None,
+    )
+    p.add_argument(
+        "--withnames",
+        action="store_true",
+        help="When showing statistics, also show per-name breakdown",
+    )
 
 
 def _print_statistics(name_filter: Optional[str] = None) -> int:
@@ -164,14 +183,11 @@ def postfokus_run(args: argparse.Namespace) -> int:
     return 0
 
 
-register_command(
-    Command(
+def get_command() -> Command:
+    return Command(
         name="postfokus",
         help="Show statistics or add a past focus session (duration, optional start/name)",
         description="Record a past focus session by providing duration and optional start time/name.",
         configure_parser=postfokus_configure_parser,
         run=postfokus_run,
     )
-)
-
-

@@ -1,0 +1,16 @@
+{
+    "[python]": {
+        // "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.tabSize": 4,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+        "editor.formatOnType": true,
+        "editor.rulers": [88],
+        "rewrap.wrappingColumn": 72,
+        "rewrap.autoWrap.enabled": true
+    },
+}
+

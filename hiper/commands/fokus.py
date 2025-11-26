@@ -2,19 +2,17 @@ import argparse
 import datetime as dt
 import json
 import os
-import sys
-import time
 import select
-import tty
+import sys
 import termios
+import time
+import tty
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from . import Command, register_command
+from .. import config, storage
 from .. import messages as msgs
-from .. import storage
-from .. import config
-
+from . import Command
 
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "hiper")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -37,18 +35,10 @@ def _elapsed_message(seconds: int) -> Optional[str]:
     return msgs.elapsed_message(seconds)
 
 
-def _save_session_csv(name: Optional[str], start: dt.datetime, end: dt.datetime, duration_s: int) -> str:
+def _save_session_csv(
+    name: Optional[str], start: dt.datetime, end: dt.datetime, duration_s: int
+) -> str:
     return storage.save_session_csv(name or "", start, end, duration_s)
-
-
-def _read_line_nonblocking(timeout_s: float = 0.0) -> Optional[str]:
-    rlist, _, _ = select.select([sys.stdin], [], [], timeout_s)
-    if not rlist:
-        return None
-    line = sys.stdin.readline()
-    if line is None:
-        return None
-    return line
 
 
 def _read_key_nonblocking(timeout_s: float = 0.0) -> Optional[str]:
@@ -84,17 +74,17 @@ def _print_header(start_time: dt.datetime) -> None:
 def _tick_render(elapsed_s: int, paused: bool = False) -> None:
     clock_enabled = config.get_config("clock", True)
     msg = _elapsed_message(elapsed_s)
-    
+
     if not clock_enabled and not paused:
         # Show dots for each minute when clock is false and running
         minutes = elapsed_s // 60
         dots = "." * minutes
-        line = f"⏱  {dots}{minutes}" if dots else "⏱  "
+        line = f"  {dots}{minutes}" if dots else "  "
     else:
         # Show normal clock format when clock is enabled or when paused
         timer = _format_duration(elapsed_s)
-        line = f"⏱  {timer}"
-    
+        line = f"  {timer}"
+
     if msg:
         line += f"  —  {msg}"
     # Carriage return update without flooding lines
@@ -107,7 +97,7 @@ def _finalize_render() -> None:
 
 def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument(
-        "--name",
+        "--title",
         help="Optional name/title for the session",
         default=None,
     )
@@ -129,10 +119,10 @@ def fokus_run(args: argparse.Namespace) -> int:
     pause_started: Optional[dt.datetime] = None
     fd, old = _set_raw_mode()
     saved = False
-    
+
     # Initial render
     _tick_render(0, paused)
-    
+
     try:
         last_whole = -1
         last_minute = -1
@@ -143,7 +133,7 @@ def fokus_run(args: argparse.Namespace) -> int:
             else:
                 elapsed = accumulated + int((now - run_started).total_seconds())
             current_minute = elapsed // 60
-            
+
             # When clock is false and running, update display every minute
             clock_enabled = config.get_config("clock", True)
             if not paused:
@@ -225,7 +215,11 @@ def fokus_run(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         _finalize_render()
         now = dt.datetime.now()
-        elapsed = accumulated if paused else accumulated + int((now - run_started).total_seconds())
+        elapsed = (
+            accumulated
+            if paused
+            else accumulated + int((now - run_started).total_seconds())
+        )
         if args.auto_save:
             path = _save_session_csv(args.name, start, now, elapsed)
             print(msgs.saved_session_line(_format_duration(elapsed)))
@@ -239,14 +233,11 @@ def fokus_run(args: argparse.Namespace) -> int:
     return 0
 
 
-register_command(
-    Command(
+def get_command() -> Command:
+    return Command(
         name="fokus",
         help="Start a focus session (live timer, save/cancel).",
         description="Start a focus session with contextual messages and a live timer.",
         configure_parser=fokus_configure_parser,
         run=fokus_run,
     )
-)
-
-
