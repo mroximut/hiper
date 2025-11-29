@@ -36,9 +36,9 @@ def _elapsed_message(seconds: int) -> Optional[str]:
 
 
 def _save_session_csv(
-    name: Optional[str], start: dt.datetime, end: dt.datetime, duration_s: int
+    title: Optional[str], start: dt.datetime, end: dt.datetime, duration_s: int
 ) -> str:
-    return storage.save_session_csv(name or "", start, end, duration_s)
+    return storage.save_session_csv(title or "", start, end, duration_s)
 
 
 def _read_key_nonblocking(timeout_s: float = 0.0) -> Optional[str]:
@@ -98,7 +98,7 @@ def _finalize_render() -> None:
 def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--title",
-        help="Optional name/title for the session",
+        help="Optional title for the session",
         default=None,
     )
     p.add_argument(
@@ -179,7 +179,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                 cmd = (line or "").strip().lower()
                 if cmd == "save":
                     _finalize_render()
-                    path = _save_session_csv(args.name, start, now, elapsed)
+                    path = _save_session_csv(args.title, start, now, elapsed)
                     print(msgs.saved_session_line(_format_duration(elapsed)))
                     print(msgs.saved_path_line(path))
                     saved = True
@@ -205,7 +205,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                 if cmd in ("quit", "exit", "q"):
                     _finalize_render()
                     if args.auto_save:
-                        path = _save_session_csv(args.name, start, now, elapsed)
+                        path = _save_session_csv(args.title, start, now, elapsed)
                         print(msgs.saved_session_line(_format_duration(elapsed)))
                         print(msgs.saved_path_line(path))
                         saved = True
@@ -221,7 +221,7 @@ def fokus_run(args: argparse.Namespace) -> int:
             else accumulated + int((now - run_started).total_seconds())
         )
         if args.auto_save:
-            path = _save_session_csv(args.name, start, now, elapsed)
+            path = _save_session_csv(args.title, start, now, elapsed)
             print(msgs.saved_session_line(_format_duration(elapsed)))
             print(msgs.saved_path_line(path))
             saved = True

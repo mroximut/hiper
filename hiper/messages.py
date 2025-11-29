@@ -1,6 +1,6 @@
+import datetime as dt
 import json
 import os
-import datetime as dt
 from typing import Optional
 
 from . import config
@@ -111,10 +111,10 @@ def interrupted_line() -> str:
 
 def paused_line(current_time: dt.datetime) -> str:
     templates = {
-        "en": "Paused at {time}.", #(save | discard | resume | quit)",
+        "en": "Paused at {time}.",  # (save | discard | resume | quit)",
     }
     tmpl = templates.get(_LANG, templates["en"])
-    return tmpl.format(time=current_time.strftime('%H:%M:%S'))
+    return tmpl.format(time=current_time.strftime("%H:%M:%S"))
 
 
 def command_prompt() -> str:
@@ -132,11 +132,11 @@ def saved_path_line(path: str) -> str:
     return tmpl.format(path=path)
 
 
-def stats_header(name_filter: Optional[str] = None) -> str:
-    if name_filter:
-        templates = {"en": "Statistics {name}"}
+def stats_header(title_filter: Optional[str] = None) -> str:
+    if title_filter:
+        templates = {"en": "Statistics {title}"}
         tmpl = templates.get(_LANG, templates["en"])
-        return tmpl.format(name=name_filter)
+        return tmpl.format(title=title_filter)
     texts = {"en": "Statistics"}
     return texts.get(_LANG, texts["en"])
 
@@ -151,7 +151,9 @@ def resuming_line(pause_duration_formatted: str, resume_time: dt.datetime) -> st
         "en": "Paused for {pause}, resuming at {time}",
     }
     tmpl = templates.get(_LANG, templates["en"])
-    return tmpl.format(pause=pause_duration_formatted, time=resume_time.strftime('%H:%M:%S'))
+    return tmpl.format(
+        pause=pause_duration_formatted, time=resume_time.strftime("%H:%M:%S")
+    )
 
 
 # Errors and notices
@@ -190,4 +192,3 @@ def language_set(lang: str) -> str:
 # To add translations:
 # - Create entries for your language code (e.g., "tr") alongside "en" in the
 #   dictionaries above (templates/texts/prompts).
-

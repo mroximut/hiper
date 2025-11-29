@@ -26,12 +26,12 @@ def _ensure_csv_header(path: str) -> None:
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(
-                ["name", "start", "end", "duration", "duration_formatted"]
+                ["title", "start", "end", "duration", "duration_formatted"]
             )  # duration in seconds
 
 
 def save_session_csv(
-    name: str, start: dt.datetime, end: dt.datetime, duration_seconds: int
+    title: str, start: dt.datetime, end: dt.datetime, duration_seconds: int
 ) -> str:
     data_dir = get_data_dir()
     sessions_csv = os.path.join(data_dir, "sessions.csv")
@@ -40,7 +40,7 @@ def save_session_csv(
         writer = csv.writer(f)
         writer.writerow(
             [
-                name or "",
+                title or "",
                 start.isoformat(),
                 end.isoformat(),
                 str(duration_seconds),
@@ -68,7 +68,7 @@ def load_sessions_csv() -> List[Dict[str, object]]:
         reader = csv.DictReader(f)
         for row in reader:
             try:
-                name = row.get("name", "")
+                title = row.get("title", "")
                 start = (
                     dt.datetime.fromisoformat(row["start"])
                     if row.get("start")
@@ -82,7 +82,7 @@ def load_sessions_csv() -> List[Dict[str, object]]:
                 continue
             rows.append(
                 {
-                    "name": name or "",
+                    "title": title or "",
                     "start": start,
                     "end": end,
                     "duration": duration,

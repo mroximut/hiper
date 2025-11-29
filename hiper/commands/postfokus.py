@@ -67,7 +67,7 @@ def postfokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--duration",
         "-d",
-        help="Duration (e.g., 25m, 1h30m, 1500s). Omit to show statistics (optionally filter by --name).",
+        help="Duration (e.g., 25m, 1h30m, 1500s). Omit to show statistics (optionally filter by --title).",
     )
     p.add_argument(
         "--start",
@@ -80,23 +80,23 @@ def postfokus_configure_parser(p: argparse.ArgumentParser) -> None:
         help="End time (ISO or HH:MM). If omitted, infer from start + duration",
     )
     p.add_argument(
-        "--name",
-        "-n",
-        help="Session name/title. With no --duration, filters statistics to this name.",
+        "--title",
+        "-t",
+        help="Session title. With no --duration, filters statistics to this title.",
         default=None,
     )
     p.add_argument(
-        "--withnames",
+        "--with-titles",
         action="store_true",
-        help="When showing statistics, also show per-name breakdown",
+        help="When showing statistics, also show per-title breakdown",
     )
 
 
-def _print_statistics(name_filter: Optional[str] = None) -> int:
+def _print_statistics(title_filter: Optional[str] = None) -> int:
     rows = storage.load_sessions_csv()
-    if name_filter:
-        rows = [r for r in rows if (r.get("name") or "") == name_filter]
-    print(msgs.stats_header(name_filter))
+    if title_filter:
+        rows = [r for r in rows if (r.get("title") or "") == title_filter]
+    print(msgs.stats_header(title_filter))
     if not rows:
         print(msgs.stats_line("sessions", "0"))
         return 0
@@ -120,21 +120,21 @@ def _print_statistics(name_filter: Optional[str] = None) -> int:
     return 0
 
 
-def _print_statistics_by_name() -> int:
+def _print_statistics_by_title() -> int:
     rows = storage.load_sessions_csv()
-    print(msgs.stats_header("by name"))
+    print(msgs.stats_header("by title"))
     if not rows:
         print(msgs.stats_line("sessions", "0"))
         return 0
     agg = {}
     for r in rows:
-        name = (r.get("name") or "").strip()
-        entry = agg.setdefault(name, {"sessions": 0, "total": 0})
+        title = (r.get("title") or "").strip()
+        entry = agg.setdefault(title, {"sessions": 0, "total": 0})
         entry["sessions"] += 1
         entry["total"] += int(r.get("duration", 0))
     items = sorted(agg.items(), key=lambda kv: kv[1]["total"], reverse=True)
-    for name, data in items:
-        label = name if name else "(unnamed)"
+    for title, data in items:
+        label = title if title else "(unnamed)"
         print("--------------------------------")
         print(msgs.stats_line(f"{label} sessions", str(data["sessions"])))
         print(msgs.stats_line(f"{label} total", storage.format_hms(data["total"])))
@@ -144,9 +144,9 @@ def _print_statistics_by_name() -> int:
 def postfokus_run(args: argparse.Namespace) -> int:
     if not args.duration:
         # No duration -> show statistics
-        if args.withnames and not args.name:
-            return _print_statistics_by_name()
-        return _print_statistics(args.name or None)
+        if args.with_titles and not args.title:
+            return _print_statistics_by_title()
+        return _print_statistics(args.title or None)
     try:
         duration_s = _parse_duration(args.duration)
     except Exception as e:
@@ -176,7 +176,7 @@ def postfokus_run(args: argparse.Namespace) -> int:
     # Infer end if not provided
     if end is None:
         end = start + dt.timedelta(seconds=duration_s)
-    path = storage.save_session_csv(args.name or "", start, end, duration_s)
+    path = storage.save_session_csv(args.title or "", start, end, duration_s)
 
     print(msgs.saved_session_line(storage.format_hms(duration_s)))
     print(msgs.saved_path_line(path))
@@ -186,8 +186,8 @@ def postfokus_run(args: argparse.Namespace) -> int:
 def get_command() -> Command:
     return Command(
         name="postfokus",
-        help="Show statistics or add a past focus session (duration, optional start/name)",
-        description="Record a past focus session by providing duration and optional start time/name.",
+        help="Show statistics or add a past focus session (duration, optional start and title)",
+        description="Record a past focus session by providing duration and optional start time and title.",
         configure_parser=postfokus_configure_parser,
         run=postfokus_run,
     )
