@@ -1,14 +1,12 @@
 import argparse
 import datetime as dt
-import json
 import os
 import select
+import shlex
 import sys
 import termios
-import time
 import tty
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
 from .. import config, storage
 from .. import messages as msgs
@@ -95,6 +93,36 @@ def _finalize_render() -> None:
     print()
 
 
+def _parse_save_command(cmd_line: str) -> tuple[bool, Optional[str]]:
+    """
+    Parse a save command line to extract title if present.
+    Returns (is_save_command, title_or_none)
+    """
+    cmd_line = cmd_line.strip()
+    if not cmd_line.lower().startswith("save"):
+        return False, None
+
+    # Try to parse with shlex to handle quoted strings properly
+    try:
+        parts = shlex.split(cmd_line)
+    except ValueError:
+        # Fallback to simple split if shlex fails
+        parts = cmd_line.split()
+
+    if len(parts) == 1 and parts[0].lower() == "save":
+        return True, None
+
+    # Look for --title flag
+    title = None
+    for i, part in enumerate(parts):
+        if part.lower() == "--title":
+            if i + 1 < len(parts):
+                title = parts[i + 1]
+            break
+
+    return True, title
+
+
 def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--title",
@@ -104,7 +132,7 @@ def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--auto-save",
         action="store_true",
-        help="Automatically save on exit (Ctrl+C or 'q')",
+        help="Automatically save on exit (Ctrl+C)",
     )
 
 
@@ -118,7 +146,6 @@ def fokus_run(args: argparse.Namespace) -> int:
     run_started = dt.datetime.now()  # timestamp when the current running span began
     pause_started: Optional[dt.datetime] = None
     fd, old = _set_raw_mode()
-    saved = False
 
     # Initial render
     _tick_render(0, paused)
@@ -176,19 +203,33 @@ def fokus_run(args: argparse.Namespace) -> int:
                 sys.stdout.write(msgs.command_prompt())
                 sys.stdout.flush()
                 line = sys.stdin.readline()
-                cmd = (line or "").strip().lower()
-                if cmd == "save":
+                cmd = (line or "").strip()
+
+                # Handle 's' shortcut for save
+                if cmd == "s":
                     _finalize_render()
                     path = _save_session_csv(args.title, start, now, elapsed)
                     print(msgs.saved_session_line(_format_duration(elapsed)))
                     print(msgs.saved_path_line(path))
-                    saved = True
                     break
-                if cmd in ("cancel", "discard"):
+
+                # Check if it's a save command (with optional --title)
+                is_save, title_override = _parse_save_command(cmd)
+                if is_save:
+                    _finalize_render()
+                    # Use title from command if provided, otherwise use args.title
+                    save_title = (
+                        title_override if title_override is not None else args.title
+                    )
+                    path = _save_session_csv(save_title, start, now, elapsed)
+                    print(msgs.saved_session_line(_format_duration(elapsed)))
+                    print(msgs.saved_path_line(path))
+                    break
+                if cmd in ("cancel", "discard", "d"):
                     _finalize_render()
                     print(msgs.cancelled_line())
                     break
-                if cmd in ("resume", "continue", ""):
+                if cmd in ("resume", "continue", "r", ""):
                     resume_now = dt.datetime.now()
                     if pause_started is not None:
                         pause_dur_s = int((resume_now - pause_started).total_seconds())
@@ -202,16 +243,12 @@ def fokus_run(args: argparse.Namespace) -> int:
                     last_whole = -1
                     last_minute = -1
                     continue
-                if cmd in ("quit", "exit", "q"):
-                    _finalize_render()
-                    if args.auto_save:
-                        path = _save_session_csv(args.title, start, now, elapsed)
-                        print(msgs.saved_session_line(_format_duration(elapsed)))
-                        print(msgs.saved_path_line(path))
-                        saved = True
-                    else:
-                        print(msgs.exited_without_saving_line())
-                    break
+                # Invalid command - only save, discard/cancel, and resume/continue are allowed
+                if cmd:
+                    print(
+                        "Invalid command. Available: save (s), discard (d), resume (r)"
+                    )
+                    continue
     except KeyboardInterrupt:
         _finalize_render()
         now = dt.datetime.now()
@@ -224,7 +261,6 @@ def fokus_run(args: argparse.Namespace) -> int:
             path = _save_session_csv(args.title, start, now, elapsed)
             print(msgs.saved_session_line(_format_duration(elapsed)))
             print(msgs.saved_path_line(path))
-            saved = True
         else:
             print(msgs.interrupted_line())
     finally:
@@ -237,7 +273,9 @@ def get_command() -> Command:
     return Command(
         name="fokus",
         help="Start a focus session (live timer, save/cancel).",
-        description="Start a focus session with contextual messages and a live timer.",
+        description="Start a focus session. Press Space to pause. When paused"
+        " press Enter to resume, or type 'save (--title TITLE)' to save the session, "
+        " or 'discard' to discard the session.",
         configure_parser=fokus_configure_parser,
         run=fokus_run,
     )
