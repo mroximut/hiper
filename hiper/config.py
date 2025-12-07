@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Dict
+from typing import Dict
 
 _DEFAULT_DATA_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "hiper")
 _CONFIG_FILE = os.path.join(_DEFAULT_DATA_DIR, "config.json")
@@ -12,12 +12,13 @@ def _load_config() -> Dict[str, str]:
     if _CONFIG_CACHE is not None:
         return _CONFIG_CACHE
 
-    cache: Dict[str, Any] = {}
+    cache: Dict[str, str] = {}
     if os.path.exists(_CONFIG_FILE):
         try:
             with open(_CONFIG_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
-        except Exception:
+        except Exception as e:
+            print(f"Error: cannot load config file {_CONFIG_FILE}: {e}")
             pass
     _CONFIG_CACHE = cache  # type: ignore
     return cache
@@ -48,8 +49,3 @@ def get_data_dir() -> str:
     if savedir and os.path.isabs(savedir):
         return savedir
     return _DEFAULT_DATA_DIR
-
-
-def invalidate_cache() -> None:
-    global _CONFIG_CACHE
-    _CONFIG_CACHE = None  # type: ignore

@@ -9,7 +9,7 @@ from . import Command
 DEFAULT_BAR_WIDTH = 42
 DEFAULT_CLOCK = "bar"
 DEFAULT_CLOCK_LENGTH = "60m"
-DEFAULT_ESTIMATE_BAR = "false"
+DEFAULT_ESTIMATE_BAR = "true"
 DEFAULT_LANG = "en"
 DEFAULT_NICK = "(not set)"
 

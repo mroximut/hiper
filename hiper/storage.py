@@ -12,10 +12,6 @@ def get_data_dir() -> str:
     return data_dir
 
 
-def invalidate_cache() -> None:
-    config.invalidate_cache()
-
-
 DATA_DIR = get_data_dir()
 
 SESSIONS_CSV = os.path.join(DATA_DIR, "sessions.csv")

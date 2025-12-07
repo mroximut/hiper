@@ -134,25 +134,23 @@ def read_run(args: argparse.Namespace) -> int:
 
         if args.plus is not None:
             # Increment current_page
+            if args.plus < 0:
+                print(f"Error: plus must be > 0, got {args.plus}")
+                return 1
             current = book.get("current_page", 0)
-            if not isinstance(current, int):
-                current = 0
             new_page = current + args.plus
-            if new_page < 0:
-                new_page = 0
-            if length > 0 and new_page > length:
-                new_page = length
+
             book["current_page"] = new_page
             print(
                 f"Updated '{title}': current_page = {new_page} (incremented by {args.plus})"
             )
         elif args.at is not None:
             # Set current_page
+            if args.at < 0:
+                print(f"Error: at must be > 0, got {args.at}")
+                return 1
             new_page = args.at
-            if new_page < 0:
-                new_page = 0
-            if length > 0 and new_page > length:
-                new_page = length
+
             book["current_page"] = new_page
             print(f"Updated '{title}': current_page = {new_page}")
 
