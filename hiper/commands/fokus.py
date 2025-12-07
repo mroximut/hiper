@@ -173,11 +173,11 @@ def _tick_render(
     if estimate_line:
         if is_first_render:
             # First render: print both lines normally
-            print(f"{line}\n{estimate_line}", end="", flush=True)
+            print(f"{line}\n{estimate_line}\n", end="", flush=True)
         else:
             # Subsequent renders: move cursor up 2 lines and update both
             # Move up 2 lines, clear both lines, then print
-            print(f"\033[2A\r{line}\033[K\n{estimate_line}\033[K", end="", flush=True)
+            print(f"\033[2A\r{line}\033[K\n{estimate_line}\033[K\n", end="", flush=True)
     else:
         # No estimate bar: just render normal clock
         print(f"\r{line}", end="", flush=True)
