@@ -50,10 +50,9 @@ def save_session_csv(
     # This ensures goals.csv stays in sync with sessions.csv
     try:
         load_goals_csv()
-    except Exception:
+    except Exception as e:
         # If updating goals fails, don't fail the session save
-        print("Error updating goals.csv")
-        pass
+        print(f"Error updating goals.csv: {e}")
 
     return sessions_csv
 
@@ -110,17 +109,12 @@ def load_sessions_csv() -> List[Dict[str, object]]:
     with open(sessions_csv, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            try:
-                title = row.get("title", "")
-                start = (
-                    dt.datetime.fromisoformat(row["start"])
-                    if row.get("start")
-                    else None
-                )
-                end = dt.datetime.fromisoformat(row["end"]) if row.get("end") else None
-                duration = int(row.get("duration", "0") or 0)
-            except Exception:
-                continue
+            title = row.get("title", "")
+            start = (
+                dt.datetime.fromisoformat(row["start"]) if row.get("start") else None
+            )
+            end = dt.datetime.fromisoformat(row["end"]) if row.get("end") else None
+            duration = int(row.get("duration", "0") or 0)
             if start is None or end is None:
                 continue
             rows.append(
@@ -164,59 +158,56 @@ def load_goals_csv() -> List[Dict[str, object]]:
         with open(goals_csv, "r", newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                try:
-                    title = row.get("title", "").strip()
-                    if not title:
-                        continue
-
-                    estimate_str = row.get("estimate_seconds", "").strip()
-                    estimate_seconds = int(estimate_str) if estimate_str else 0
-
-                    deadline_str = row.get("deadline", "").strip()
-                    deadline = (
-                        dt.datetime.strptime(deadline_str, "%Y-%m-%d").date()
-                        if deadline_str
-                        else None
-                    )
-
-                    estimate_timestamp_str = row.get("estimate_timestamp", "").strip()
-                    estimate_timestamp = (
-                        dt.datetime.fromisoformat(estimate_timestamp_str)
-                        if estimate_timestamp_str
-                        else None
-                    )
-
-                    time_worked_str = row.get("time_worked_seconds", "").strip()
-                    time_worked_seconds = int(time_worked_str) if time_worked_str else 0
-
-                    start_by_str = row.get("start_by", "").strip()
-                    start_by = (
-                        dt.datetime.strptime(start_by_str, "%Y-%m-%d").date()
-                        if start_by_str
-                        else None
-                    )
-
-                    # Compute formatted values if not present (for backward compatibility)
-                    estimate_formatted = row.get("estimate_formatted", "").strip()
-                    if not estimate_formatted and estimate_seconds > 0:
-                        estimate_formatted = format_hms(estimate_seconds)
-
-                    time_worked_formatted = row.get("time_worked_formatted", "").strip()
-                    if not time_worked_formatted and time_worked_seconds > 0:
-                        time_worked_formatted = format_hms(time_worked_seconds)
-
-                    existing_goals[title] = {
-                        "title": title,
-                        "estimate_seconds": estimate_seconds,
-                        "estimate_formatted": estimate_formatted,
-                        "estimate_timestamp": estimate_timestamp,
-                        "deadline": deadline,
-                        "time_worked_seconds": time_worked_seconds,
-                        "time_worked_formatted": time_worked_formatted,
-                        "start_by": start_by,
-                    }
-                except Exception:
+                title = row.get("title", "").strip()
+                if not title:
                     continue
+
+                estimate_str = row.get("estimate_seconds", "").strip()
+                estimate_seconds = int(estimate_str) if estimate_str else 0
+
+                deadline_str = row.get("deadline", "").strip()
+                deadline = (
+                    dt.datetime.strptime(deadline_str, "%Y-%m-%d").date()
+                    if deadline_str
+                    else None
+                )
+
+                estimate_timestamp_str = row.get("estimate_timestamp", "").strip()
+                estimate_timestamp = (
+                    dt.datetime.fromisoformat(estimate_timestamp_str)
+                    if estimate_timestamp_str
+                    else None
+                )
+
+                time_worked_str = row.get("time_worked_seconds", "").strip()
+                time_worked_seconds = int(time_worked_str) if time_worked_str else 0
+
+                start_by_str = row.get("start_by", "").strip()
+                start_by = (
+                    dt.datetime.strptime(start_by_str, "%Y-%m-%d").date()
+                    if start_by_str
+                    else None
+                )
+
+                # Compute formatted values if not present (for backward compatibility)
+                estimate_formatted = row.get("estimate_formatted", "").strip()
+                if not estimate_formatted and estimate_seconds > 0:
+                    estimate_formatted = format_hms(estimate_seconds)
+
+                time_worked_formatted = row.get("time_worked_formatted", "").strip()
+                if not time_worked_formatted and time_worked_seconds > 0:
+                    time_worked_formatted = format_hms(time_worked_seconds)
+
+                existing_goals[title] = {
+                    "title": title,
+                    "estimate_seconds": estimate_seconds,
+                    "estimate_formatted": estimate_formatted,
+                    "estimate_timestamp": estimate_timestamp,
+                    "deadline": deadline,
+                    "time_worked_seconds": time_worked_seconds,
+                    "time_worked_formatted": time_worked_formatted,
+                    "start_by": start_by,
+                }
 
     # Get all unique titles from sessions.csv
     sessions = load_sessions_csv()
@@ -399,26 +390,23 @@ def load_read_csv() -> List[Dict[str, object]]:
     with open(read_csv, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            try:
-                title = row.get("title", "").strip()
-                if not title:
-                    continue
-
-                length_str = row.get("length", "").strip()
-                length = int(length_str) if length_str else 0
-
-                current_page_str = row.get("current_page", "").strip()
-                current_page = int(current_page_str) if current_page_str else 0
-
-                rows.append(
-                    {
-                        "title": title,
-                        "length": length,
-                        "current_page": current_page,
-                    }
-                )
-            except Exception:
+            title = row.get("title", "").strip()
+            if not title:
                 continue
+
+            length_str = row.get("length", "").strip()
+            length = int(length_str) if length_str else 0
+
+            current_page_str = row.get("current_page", "").strip()
+            current_page = int(current_page_str) if current_page_str else 0
+
+            rows.append(
+                {
+                    "title": title,
+                    "length": length,
+                    "current_page": current_page,
+                }
+            )
 
     return rows
 

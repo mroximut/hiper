@@ -19,6 +19,17 @@ from .set import (
 )
 
 
+def _get_bar_width() -> int:
+    # Get bar width from config (default: 42)
+    try:
+        bar_width = int(config.get_config("bar_width", DEFAULT_BAR_WIDTH))
+        if bar_width <= 0:
+            bar_width = int(DEFAULT_BAR_WIDTH)
+    except (ValueError, TypeError):
+        bar_width = int(DEFAULT_BAR_WIDTH)
+    return bar_width
+
+
 def _format_duration(seconds: int) -> str:
     return storage.format_hms(seconds)
 
@@ -93,19 +104,10 @@ def _tick_render(
         and estimate_seconds > 0
         and time_worked_before is not None
     ):
-        # Total time worked including current session
         total_time_worked = time_worked_before + elapsed_s
-
-        # Calculate progress
         progress = total_time_worked / estimate_seconds if estimate_seconds > 0 else 1.0
 
-        # Get bar width from config (default: 42)
-        try:
-            bar_width = int(config.get_config("bar_width", str(DEFAULT_BAR_WIDTH)))
-            if bar_width <= 0:
-                bar_width = DEFAULT_BAR_WIDTH
-        except (ValueError, TypeError):
-            bar_width = DEFAULT_BAR_WIDTH
+        bar_width = _get_bar_width()
 
         # Create progress bar (capped at 100%)
         filled = min(int(progress * bar_width), bar_width)
@@ -135,25 +137,18 @@ def _tick_render(
         if goal_override:
             clock_length_str = goal_override
         else:
-            clock_length_str = config.get_config(
-                "clock_length", str(DEFAULT_CLOCK_LENGTH)
-            )
+            clock_length_str = config.get_config("clock_length", DEFAULT_CLOCK_LENGTH)
         try:
             target_s = storage.parse_duration(clock_length_str)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
             # Fallback to 60 minutes if parsing fails
+            print(f"Error: invalid clock length '{clock_length_str}': {e}")
             target_s = 3600
 
         # Calculate progress (can exceed 1.0 if target is exceeded)
         progress = elapsed_s / target_s if target_s > 0 else 1.0
 
-        # Get bar width from config (default: 42)
-        try:
-            bar_width = int(config.get_config("bar_width", str(DEFAULT_BAR_WIDTH)))
-            if bar_width <= 0:
-                bar_width = DEFAULT_BAR_WIDTH
-        except (ValueError, TypeError):
-            bar_width = DEFAULT_BAR_WIDTH
+        bar_width = _get_bar_width()
 
         # Create progress bar (capped at 100%)
         filled = min(int(progress * bar_width), bar_width)
@@ -276,9 +271,9 @@ def fokus_run(args: argparse.Namespace) -> int:
                             else:
                                 time_worked_before = 0
                         break
-        except Exception:
+        except Exception as e:
             # If loading goals fails, just continue without estimate bar
-            pass
+            print(f"Error: failed to load goals: {e}")
 
     # Running: detect space with raw mode; Paused: line input for commands
     paused = False

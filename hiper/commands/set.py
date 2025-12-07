@@ -6,7 +6,7 @@ from .. import config, storage
 from .. import messages as msgs
 from . import Command
 
-DEFAULT_BAR_WIDTH = 42
+DEFAULT_BAR_WIDTH = "42"
 DEFAULT_CLOCK = "bar"
 DEFAULT_CLOCK_LENGTH = "60m"
 DEFAULT_ESTIMATE_BAR = "true"
@@ -41,7 +41,7 @@ def set_run(args: argparse.Namespace) -> int:
         nick = config.get_config("nick", DEFAULT_NICK)
         savedir = config.get_data_dir()
         clock = config.get_config("clock", DEFAULT_CLOCK)
-        bar_width = config.get_config("bar_width", str(DEFAULT_BAR_WIDTH))
+        bar_width = config.get_config("bar_width", DEFAULT_BAR_WIDTH)
         clock_length = config.get_config("clock_length", DEFAULT_CLOCK_LENGTH)
         estimate_bar = config.get_config("estimate_bar", DEFAULT_ESTIMATE_BAR)
 

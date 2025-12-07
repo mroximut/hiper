@@ -19,7 +19,7 @@ def _load_config() -> Dict[str, str]:
                 cache = json.load(f)
         except Exception as e:
             print(f"Error: cannot load config file {_CONFIG_FILE}: {e}")
-            pass
+
     _CONFIG_CACHE = cache  # type: ignore
     return cache
 
