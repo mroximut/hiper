@@ -31,6 +31,23 @@ def read_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--title", "-t", help="Title of the book to show progress for")
 
 
+def _format_progress_bar(title: str, length: int, current_page: int) -> str:
+    """Format a progress bar for a book. Returns the formatted string."""
+    if length == 0:
+        return f"{title}: Invalid length (0 pages)"
+
+    # Calculate percentage
+    percentage = (current_page / length) * 100 if length > 0 else 0.0
+    percentage = min(percentage, 100.0)
+
+    # Create progress bar (similar to fokus command)
+    bar_width = int(config.get_config("bar_width", str(DEFAULT_BAR_WIDTH)))
+    filled = int((percentage / 100) * bar_width)
+    bar = "█" * filled + "░" * (bar_width - filled)
+
+    return f"{title}:\n:>{bar} {int(percentage)}% ({current_page}/{length} pages)"
+
+
 def _show_progress(title: str) -> bool:
     """Show progress bar and ask user if they want to start reading.
     Returns True if user wants to start, False otherwise.
@@ -55,21 +72,7 @@ def _show_progress(title: str) -> bool:
     if not isinstance(current_page, int):
         current_page = 0
 
-    if length == 0:
-        print(f"Error: Book '{title}' has invalid length (0)")
-        return False
-
-    # Calculate percentage
-    percentage = (current_page / length) * 100 if length > 0 else 0.0
-    percentage = min(percentage, 100.0)
-
-    # Create progress bar (similar to fokus command)
-    bar_width = int(config.get_config("bar_width", str(DEFAULT_BAR_WIDTH)))
-    filled = int((percentage / 100) * bar_width)
-    bar = "█" * filled + "░" * (bar_width - filled)
-
-    print(f"Progress for '{title}':")
-    print(f":>{bar} {int(percentage)}% ({current_page}/{length} pages)")
+    print(_format_progress_bar(title, length, current_page))
 
     # Ask user if they want to start
     while True:
@@ -80,6 +83,28 @@ def _show_progress(title: str) -> bool:
             return False
         else:
             print("Please enter 'y' or 'n'")
+
+
+def _show_all_progress() -> None:
+    """Show progress bars for all books in read.csv."""
+    reads = storage.load_read_csv()
+
+    if not reads:
+        print("No books in read.csv")
+        return
+
+    for book in reads:
+        title_obj = book.get("title", "")
+        length_obj = book.get("length", 0)
+        current_page_obj = book.get("current_page", 0)
+
+        # Ensure types
+        title = str(title_obj) if title_obj else ""
+        length = int(length_obj) if isinstance(length_obj, int) else 0
+        current_page = int(current_page_obj) if isinstance(current_page_obj, int) else 0
+
+        print(_format_progress_bar(title, length, current_page))
+        print()  # Empty line between books
 
 
 def read_run(args: argparse.Namespace) -> int:
@@ -159,8 +184,9 @@ def read_run(args: argparse.Namespace) -> int:
         return 0
 
     else:
-        # Default: show progress if --title is provided
+        # Default: show progress
         if args.title:
+            # Show progress for specific book and ask if user wants to start
             start = _show_progress(args.title)
             if start:
                 # User wants to start reading - start a fokus session
@@ -168,10 +194,9 @@ def read_run(args: argparse.Namespace) -> int:
                 return fokus_run(fokus_args)
             return 0
         else:
-            print(
-                "Error: Please specify a subcommand (add, update) or use --title to show progress"
-            )
-            return 1
+            # Show progress for all books
+            _show_all_progress()
+            return 0
 
 
 def get_command() -> Command:
