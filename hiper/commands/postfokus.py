@@ -189,7 +189,7 @@ def postfokus_run(args: argparse.Namespace) -> int:
 def get_command() -> Command:
     return Command(
         name="postfokus",
-        help="Show statistics or add a past focus session (duration, optional start and title)",
+        help="Show statistics or add a past focus session.",
         description="Record a past focus session by providing duration and optional start time and title.",
         configure_parser=postfokus_configure_parser,
         run=postfokus_run,

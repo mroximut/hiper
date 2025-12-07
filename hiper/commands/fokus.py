@@ -11,6 +11,12 @@ from typing import Optional
 from .. import config, storage
 from .. import messages as msgs
 from . import Command
+from .set import (
+    DEFAULT_BAR_WIDTH,
+    DEFAULT_CLOCK,
+    DEFAULT_CLOCK_LENGTH,
+    DEFAULT_ESTIMATE_BAR,
+)
 
 
 def _format_duration(seconds: int) -> str:
@@ -60,23 +66,78 @@ def _restore_mode(fd, old_settings):  # type: ignore
 
 def _print_header(start_time: dt.datetime):
     print(msgs.started_at_line(start_time))
-    print(msgs.instructions_line())
-    print()
 
 
-def _tick_render(elapsed_s: int, goal_override: Optional[str] = None):
-    clock = config.get_config("clock", "dots")
+def _tick_render(
+    elapsed_s: int,
+    goal_override: Optional[str] = None,
+    session_title: Optional[str] = None,
+    is_first_render: bool = False,
+    estimate_seconds: Optional[int] = None,
+    time_worked_before: Optional[int] = None,
+):
+    clock = config.get_config("clock", DEFAULT_CLOCK)
+    if goal_override:
+        clock = "bar"
 
+    # Check if estimate bar is enabled
+    estimate_bar_enabled = (
+        config.get_config("estimate_bar", DEFAULT_ESTIMATE_BAR).lower() == "true"
+    )
+    estimate_line = None
+
+    # Render estimate bar if enabled and we have estimate data
+    if (
+        estimate_bar_enabled
+        and estimate_seconds is not None
+        and estimate_seconds > 0
+        and time_worked_before is not None
+    ):
+        # Total time worked including current session
+        total_time_worked = time_worked_before + elapsed_s
+
+        # Calculate progress
+        progress = total_time_worked / estimate_seconds if estimate_seconds > 0 else 1.0
+
+        # Get bar width from config (default: 42)
+        try:
+            bar_width = int(config.get_config("bar_width", str(DEFAULT_BAR_WIDTH)))
+            if bar_width <= 0:
+                bar_width = DEFAULT_BAR_WIDTH
+        except (ValueError, TypeError):
+            bar_width = DEFAULT_BAR_WIDTH
+
+        # Create progress bar (capped at 100%)
+        filled = min(int(progress * bar_width), bar_width)
+        bar = "█" * filled + "░" * (bar_width - filled)
+
+        # Show percentage and time remaining/completed
+        if total_time_worked >= estimate_seconds:
+            # Estimate reached or exceeded
+            estimate_line = (
+                f":>{bar} {int(min(progress, 1.0) * 100)}% "
+                f"(estimate: {_format_duration(estimate_seconds)}, "
+                f"worked: {_format_duration(total_time_worked)})"
+            )
+        else:
+            estimate_line = (
+                f":>{bar} {int(progress * 100)}% "
+                f"(estimate: {_format_duration(estimate_seconds)})"
+            )
+
+    # Render normal clock
     if clock == "dots":
         minutes = elapsed_s // 60
         dots = "." * minutes
-        line = f":>{dots}" if dots else "  "
+        line = f":>{dots}" if dots else ":>"
     elif clock == "bar":
         # Parse target duration from goal override or clock_length config
         if goal_override:
             clock_length_str = goal_override
         else:
-            clock_length_str = config.get_config("clock_length", "60m")
+            clock_length_str = config.get_config(
+                "clock_length", str(DEFAULT_CLOCK_LENGTH)
+            )
         try:
             target_s = storage.parse_duration(clock_length_str)
         except (ValueError, TypeError):
@@ -86,13 +147,13 @@ def _tick_render(elapsed_s: int, goal_override: Optional[str] = None):
         # Calculate progress (can exceed 1.0 if target is exceeded)
         progress = elapsed_s / target_s if target_s > 0 else 1.0
 
-        # Get bar width from config (default: 50)
+        # Get bar width from config (default: 42)
         try:
-            bar_width = int(config.get_config("bar_width", "50"))
+            bar_width = int(config.get_config("bar_width", str(DEFAULT_BAR_WIDTH)))
             if bar_width <= 0:
-                bar_width = 50
+                bar_width = DEFAULT_BAR_WIDTH
         except (ValueError, TypeError):
-            bar_width = 50
+            bar_width = DEFAULT_BAR_WIDTH
 
         # Create progress bar (capped at 100%)
         filled = min(int(progress * bar_width), bar_width)
@@ -101,8 +162,10 @@ def _tick_render(elapsed_s: int, goal_override: Optional[str] = None):
         # Show percentage and time remaining/completed
         if elapsed_s >= target_s:
             # Target reached or exceeded
-            line = f":>{bar} {int(min(progress, 1.0) * 100)}% "
-            f"(total: {_format_duration(elapsed_s)})"
+            line = (
+                f":>{bar} {int(min(progress, 1.0) * 100)}% "
+                f"(total: {_format_duration(elapsed_s)})"
+            )
         else:
             line = (
                 f":>{bar} {int(progress * 100)}% (goal: {_format_duration(target_s)})"
@@ -111,7 +174,18 @@ def _tick_render(elapsed_s: int, goal_override: Optional[str] = None):
         timer = _format_duration(elapsed_s)
         line = f":>{timer}"
 
-    print(f"\r{line}", end="", flush=True)
+    # Render both lines if estimate bar is shown
+    if estimate_line:
+        if is_first_render:
+            # First render: print both lines normally
+            print(f"{line}\n{estimate_line}", end="", flush=True)
+        else:
+            # Subsequent renders: move cursor up 2 lines and update both
+            # Move up 2 lines, clear both lines, then print
+            print(f"\033[2A\r{line}\033[K\n{estimate_line}\033[K", end="", flush=True)
+    else:
+        # No estimate bar: just render normal clock
+        print(f"\r{line}", end="", flush=True)
 
 
 def _finalize_render() -> None:
@@ -148,12 +222,14 @@ def _parse_save_command(cmd_line: str) -> tuple[bool, Optional[str]]:
 def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--title",
+        "-t",
         help="Optional title for the session",
         default=None,
     )
     p.add_argument(
         "--goal",
-        help="Target duration for this session (e.g., 60m, 1h30m). Overrides clock_length config.",
+        "-g",
+        help="Target duration for this session (e.g., 60m, 1h30m). Overrides --clock config.",
         default=None,
     )
 
@@ -173,6 +249,37 @@ def fokus_run(args: argparse.Namespace) -> int:
     start = dt.datetime.now()
     _print_header(start)
 
+    # Load estimate data if estimate_bar is enabled and title is provided
+    estimate_seconds: Optional[int] = None
+    time_worked_before: Optional[int] = None
+    estimate_bar_enabled = (
+        config.get_config("estimate_bar", DEFAULT_ESTIMATE_BAR).lower() == "true"
+    )
+    if estimate_bar_enabled and args.title:
+        try:
+            goals = storage.load_goals_csv()
+            for goal in goals:
+                if goal.get("title") == args.title:
+                    est_sec = goal.get("estimate_seconds", 0)
+                    if isinstance(est_sec, int) and est_sec > 0:
+                        estimate_seconds = est_sec
+                        # Get time worked before this session
+                        estimate_timestamp = goal.get("estimate_timestamp")
+                        if isinstance(estimate_timestamp, dt.datetime):
+                            time_worked_before = storage.get_time_worked_for_title(
+                                args.title, after_timestamp=estimate_timestamp
+                            )
+                        else:
+                            time_worked_obj = goal.get("time_worked_seconds", 0)
+                            if isinstance(time_worked_obj, int):
+                                time_worked_before = time_worked_obj
+                            else:
+                                time_worked_before = 0
+                        break
+        except Exception:
+            # If loading goals fails, just continue without estimate bar
+            pass
+
     # Running: detect space with raw mode; Paused: line input for commands
     paused = False
     accumulated = 0  # seconds accumulated before current running span
@@ -180,8 +287,19 @@ def fokus_run(args: argparse.Namespace) -> int:
     pause_started: Optional[dt.datetime] = None
     fd, old = _set_raw_mode()
 
+    # Track if this is the first render (for estimate bar positioning)
+    is_first_render = True
+
     # Initial render
-    _tick_render(0, goal_override)
+    _tick_render(
+        0,
+        goal_override,
+        args.title,
+        is_first_render,
+        estimate_seconds,
+        time_worked_before,
+    )
+    is_first_render = False
 
     try:
         last_whole = -1
@@ -195,7 +313,15 @@ def fokus_run(args: argparse.Namespace) -> int:
             # Update display every second when running
             if not paused:
                 if elapsed != last_whole:
-                    _tick_render(elapsed, goal_override)
+                    _tick_render(
+                        elapsed,
+                        goal_override,
+                        args.title,
+                        is_first_render,
+                        estimate_seconds,
+                        time_worked_before,
+                    )
+                    is_first_render = False
                     last_whole = elapsed
             elif paused and elapsed != last_whole:
                 # # When paused, always show normal time format
@@ -248,12 +374,24 @@ def fokus_run(args: argparse.Namespace) -> int:
                         pause_dur_s = int((resume_now - pause_started).total_seconds())
                     else:
                         pause_dur_s = 0
+                    # Delete the last line
+                    print("\033[1A\033[K", end="", flush=True)
                     print(msgs.resuming_line(_format_duration(pause_dur_s), resume_now))
                     fd, old = _set_raw_mode()
                     paused = False
                     run_started = resume_now
                     pause_started = None
                     last_whole = -1
+                    is_first_render = True
+                    _tick_render(
+                        elapsed,
+                        goal_override,
+                        args.title,
+                        is_first_render,
+                        estimate_seconds,
+                        time_worked_before,
+                    )
+                    is_first_render = False
                     continue
                 # Invalid command - only save, discard/cancel, and resume/continue are allowed
                 if cmd:
@@ -278,7 +416,7 @@ def fokus_run(args: argparse.Namespace) -> int:
 def get_command() -> Command:
     return Command(
         name="fokus",
-        help="Start a focus session (live timer, save/cancel).",
+        help="Start a focus session.",
         description="Start a focus session. Press Space to pause. When paused"
         " press Enter to resume, or type 'save (--title TITLE)' to save the session, "
         " or 'discard' to discard the session.",

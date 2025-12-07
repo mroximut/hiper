@@ -6,6 +6,13 @@ from .. import config, storage
 from .. import messages as msgs
 from . import Command
 
+DEFAULT_BAR_WIDTH = 42
+DEFAULT_CLOCK = "bar"
+DEFAULT_CLOCK_LENGTH = "60m"
+DEFAULT_ESTIMATE_BAR = "false"
+DEFAULT_LANG = "en"
+DEFAULT_NICK = "(not set)"
+
 
 def set_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--lang", help="Language code (e.g., en, tr)")
@@ -14,7 +21,7 @@ def set_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--clock",
         help="Show clock display (digital/dots/bar). "
-        "To show a loading bar use format 'bar=duration', e.g. --clock bar=75m or --clock bar=1h30m"
+        "To show a loading bar use format 'bar=duration', e.g. --clock bar=1h15m. "
         "Otherwise use --clock digital or --clock dots",
     )
     p.add_argument(
@@ -22,16 +29,22 @@ def set_configure_parser(p: argparse.ArgumentParser) -> None:
         type=int,
         help="Width of the progress bar (default: 50)",
     )
+    p.add_argument(
+        "--estimate-bar",
+        help="Show estimate progress bar in fokus sessions (true/false)",
+    )
     p.add_argument("--show", action="store_true", help="Show current settings")
 
 
 def set_run(args: argparse.Namespace) -> int:
     if args.show:
-        lang = config.get_config("lang", "en")
-        nick = config.get_config("nick", "(not set)")
+        lang = config.get_config("lang", DEFAULT_LANG)
+        nick = config.get_config("nick", DEFAULT_NICK)
         savedir = config.get_data_dir()
-        clock = config.get_config("clock", "dots")
-        bar_width = config.get_config("bar_width", "50")
+        clock = config.get_config("clock", DEFAULT_CLOCK)
+        bar_width = config.get_config("bar_width", str(DEFAULT_BAR_WIDTH))
+        clock_length = config.get_config("clock_length", DEFAULT_CLOCK_LENGTH)
+        estimate_bar = config.get_config("estimate_bar", DEFAULT_ESTIMATE_BAR)
 
         print("Current settings:")
         print(f"  lang: {lang}")
@@ -39,6 +52,8 @@ def set_run(args: argparse.Namespace) -> int:
         print(f"  savedir: {savedir}")
         print(f"  clock: {clock}")
         print(f"  bar_width: {bar_width}")
+        print(f"  clock_length: {clock_length}")
+        print(f"  estimate_bar: {estimate_bar}")
         return 0
 
     # Set values
@@ -81,6 +96,7 @@ def set_run(args: argparse.Namespace) -> int:
                 # Validate the duration format
                 storage.parse_duration(length_str)
                 config.set_config("clock_length", length_str)
+                updated.append(f"clock_length={length_str}")
             except ValueError as e:
                 print(f"Error: invalid clock length '{length_str}': {e}")
                 return 1
@@ -93,11 +109,21 @@ def set_run(args: argparse.Namespace) -> int:
         config.set_config("bar_width", str(args.bar_width))
         updated.append(f"bar_width={args.bar_width}")
 
+    if args.estimate_bar is not None:
+        estimate_bar = args.estimate_bar.strip().lower()
+        if estimate_bar not in ("true", "false"):
+            print(f"Error: estimate_bar must be 'true' or 'false': {estimate_bar}")
+            return 1
+        config.set_config("estimate_bar", estimate_bar)
+        updated.append(f"estimate_bar={estimate_bar}")
+
     if updated:
         print(f"Updated: {', '.join(updated)}")
     else:
         print("No settings specified. Use --show to see current settings.")
-        print("Available options: --lang, --nick, --savedir, --clock, --bar-width")
+        print(
+            "Available options: --lang, --nick, --savedir, --clock, --bar-width, --estimate-bar"
+        )
 
     return 0
 
@@ -105,7 +131,7 @@ def set_run(args: argparse.Namespace) -> int:
 def get_command() -> Command:
     return Command(
         name="set",
-        help="Set configuration options",
+        help="Set configuration options.",
         description="Set configuration options like language, "
         "nickname, save directory, etc.",
         configure_parser=set_configure_parser,

@@ -2,10 +2,11 @@ import datetime as dt
 from typing import Optional
 
 from . import config, storage
+from .commands.set import DEFAULT_LANG
 
 
 def _load_lang_from_config() -> str:
-    return config.get_config("lang", "en")
+    return config.get_config("lang", DEFAULT_LANG)
 
 
 _LANG: str = _load_lang_from_config()
@@ -13,18 +14,18 @@ _LANG: str = _load_lang_from_config()
 
 def set_language(lang: str) -> None:
     global _LANG
-    _LANG = lang or "en"  # type: ignore
+    _LANG = lang or DEFAULT_LANG  # type: ignore
 
 
 def save_language(lang: str) -> None:
-    lang = lang or "en"
+    lang = lang or DEFAULT_LANG
     config.set_config("lang", lang)
     set_language(lang)
 
 
 def instructions_line() -> str:
     texts = {
-        "en": "Press Space to pause. Press Ctrl+C to quit.",
+        "en": "",
     }
     return texts.get(_LANG, texts["en"])
 
@@ -50,7 +51,7 @@ def cancelled_line() -> str:
 def interrupted_line(elapsed_seconds: int) -> str:
     elapsed = storage.format_hms(elapsed_seconds)
     templates = {
-        "en": f"Interrupted. Fokused for {elapsed}."
+        "en": f"Interrupted. Fokused for {elapsed}.\n"
         f"Use hiper postfokus --duration {elapsed} --title TITLE "
         "if you want to save the session.",
     }
@@ -59,9 +60,10 @@ def interrupted_line(elapsed_seconds: int) -> str:
 
 def paused_line(current_time: dt.datetime, elapsed_seconds: int) -> str:
     templates = {
-        "en": f"Paused at {current_time.strftime('%H:%M:%S')}.\n"
-        f"Fokused for {storage.format_hms(elapsed_seconds)}."
-        "Press Enter to resume or [(s)ave --title TITLE | (d)iscard]",
+        "en": "---------------------------------\n"
+        f"Paused at {current_time.strftime('%H:%M:%S')}.\n"
+        f"Fokused in total for {storage.format_hms(elapsed_seconds)}.\n"
+        "---------------------------------",
     }
     return templates.get(_LANG, templates["en"])
 
