@@ -2,32 +2,43 @@ import argparse
 import os
 from typing import List
 
-from .. import config
+from .. import config, storage
 from .. import messages as msgs
 from . import Command
 
 
 def set_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--lang", help="Language code (e.g., en, tr)")
-    p.add_argument("--nick", help="Your nickname/name")
+    p.add_argument("--nick", help="Your nickname")
     p.add_argument("--savedir", help="Directory to save sessions CSV (absolute path)")
-    p.add_argument("--clock", type=str, help="Show clock display (true/false)")
+    p.add_argument(
+        "--clock",
+        help="Show clock display (digital/dots/bar). "
+        "To show a loading bar use format 'bar=duration', e.g. --clock bar=75m or --clock bar=1h30m"
+        "Otherwise use --clock digital or --clock dots",
+    )
+    p.add_argument(
+        "--bar-width",
+        type=int,
+        help="Width of the progress bar (default: 50)",
+    )
     p.add_argument("--show", action="store_true", help="Show current settings")
 
 
 def set_run(args: argparse.Namespace) -> int:
     if args.show:
-        # Show all current settings
         lang = config.get_config("lang", "en")
-        nick = config.get_config("nick", "")
-        savedir = config.get_config("savedir", "")
-        clock = config.get_config("clock", True)
+        nick = config.get_config("nick", "(not set)")
+        savedir = config.get_data_dir()
+        clock = config.get_config("clock", "dots")
+        bar_width = config.get_config("bar_width", "50")
 
         print("Current settings:")
         print(f"  lang: {lang}")
-        print(f"  nick: {nick or '(not set)'}")
-        print(f"  savedir: {savedir or '(default)'}")
+        print(f"  nick: {nick}")
+        print(f"  savedir: {savedir}")
         print(f"  clock: {clock}")
+        print(f"  bar_width: {bar_width}")
         return 0
 
     # Set values
@@ -58,20 +69,35 @@ def set_run(args: argparse.Namespace) -> int:
         updated.append(f"savedir={savedir}")
 
     if args.clock is not None:
-        clock_str = args.clock.strip().lower()
-        if clock_str in ("true", "false"):
-            clock_value = clock_str == "true"
-            config.set_config("clock", clock_value)
-            updated.append(f"clock={clock_value}")
-        else:
-            print(f"Error: clock must be 'true' or 'false', got: {clock_str}")
+        clock_parts = args.clock.strip().lower().split("=")
+        clock = clock_parts[0]
+        if clock not in ("digital", "dots", "bar"):
+            print(f"Error: invalid clock value: {clock}")
             return 1
+        config.set_config("clock", clock)
+        if len(clock_parts) > 1:
+            length_str = clock_parts[1]
+            try:
+                # Validate the duration format
+                storage.parse_duration(length_str)
+                config.set_config("clock_length", length_str)
+            except ValueError as e:
+                print(f"Error: invalid clock length '{length_str}': {e}")
+                return 1
+        updated.append(f"clock={clock}")
+
+    if args.bar_width is not None:
+        if args.bar_width <= 0:
+            print(f"Error: bar_width must be > 0: {args.bar_width}")
+            return 1
+        config.set_config("bar_width", str(args.bar_width))
+        updated.append(f"bar_width={args.bar_width}")
 
     if updated:
         print(f"Updated: {', '.join(updated)}")
     else:
         print("No settings specified. Use --show to see current settings.")
-        print("Available options: --lang, --nick, --savedir, --clock")
+        print("Available options: --lang, --nick, --savedir, --clock, --bar-width")
 
     return 0
 

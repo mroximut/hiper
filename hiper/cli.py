@@ -1,7 +1,6 @@
 import argparse
 import sys
-from typing import Callable, Dict, List, Optional
-from . import messages as msgs
+from typing import List, Optional
 
 from .commands import COMMAND_REGISTRY, load_builtin_commands
 
@@ -11,14 +10,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="hiper",
         description="hiper - a tiny, extensible terminal helper",
     )
-    parser.add_argument(
-        "--lang",
-        help="Language code for messages",
-        default=None,
-    )
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")
 
-    # Ensure builtin commands are registered before building subparsers
     load_builtin_commands()
 
     # Dynamically add subparsers from the registry
@@ -42,14 +35,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     argv = list(argv) if argv is not None else sys.argv[1:]
     parser = build_parser()
     if not argv:
-        # Show help with available commands
         parser.print_help()
         return 0
     args = parser.parse_args(argv)
-
-    # Set language if provided
-    if getattr(args, "lang", None):
-        msgs.set_language(args.lang)
 
     if getattr(args, "list", False):
         print("Available commands:")
@@ -72,5 +60,3 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

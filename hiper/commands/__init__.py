@@ -15,11 +15,11 @@ class Command:
 COMMAND_REGISTRY: Dict[str, Command] = {}
 
 
-def register_command(cmd: Command) -> None:
+def register_command(cmd: Command):
     COMMAND_REGISTRY[cmd.name] = cmd
 
 
-def load_builtin_commands() -> None:
+def load_builtin_commands():
     """Load all builtin commands into the registry."""
     from . import fokus, postfokus, set
 

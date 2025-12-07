@@ -54,8 +54,43 @@ def format_hms(seconds: int) -> str:
     minutes, secs = divmod(int(seconds), 60)
     hours, minutes = divmod(minutes, 60)
     if hours:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    return f"{minutes:02d}:{secs:02d}"
+        return f"{hours:02d}h{minutes:02d}m{secs:02d}s"
+    return f"{minutes:02d}m{secs:02d}s"
+
+
+def parse_duration(s: str) -> int:
+    s = s.strip().lower()
+    if not s:
+        raise ValueError("empty duration")
+    total = 0
+    num = ""
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch.isdigit():
+            num += ch
+            i += 1
+            continue
+        if ch in ("h", "m", "s"):
+            if not num:
+                raise ValueError("missing number before unit")
+            val = int(num)
+            if ch == "h":
+                total += val * 3600
+            elif ch == "m":
+                total += val * 60
+            else:
+                total += val
+            num = ""
+            i += 1
+            continue
+        raise ValueError(f"unexpected character '{ch}' in duration")
+    if num:
+        # trailing number with no unit -> minutes
+        total += int(num) * 60
+    if total <= 0:
+        raise ValueError("duration must be > 0")
+    return total
 
 
 def load_sessions_csv() -> List[Dict[str, object]]:

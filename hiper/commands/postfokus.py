@@ -1,6 +1,6 @@
 import argparse
 import datetime as dt
-from typing import Optional
+from typing import Dict, Optional
 
 from .. import messages as msgs
 from .. import storage
@@ -8,38 +8,28 @@ from . import Command
 
 
 def _parse_duration(s: str) -> int:
-    s = s.strip().lower()
-    if not s:
-        raise ValueError("empty duration")
-    total = 0
-    num = ""
-    i = 0
-    while i < len(s):
-        ch = s[i]
-        if ch.isdigit():
-            num += ch
-            i += 1
-            continue
-        if ch in ("h", "m", "s"):
-            if not num:
-                raise ValueError("missing number before unit")
-            val = int(num)
-            if ch == "h":
-                total += val * 3600
-            elif ch == "m":
-                total += val * 60
-            else:
-                total += val
-            num = ""
-            i += 1
-            continue
-        raise ValueError(f"unexpected character '{ch}' in duration")
-    if num:
-        # trailing number with no unit -> minutes
-        total += int(num) * 60
-    if total <= 0:
-        raise ValueError("duration must be > 0")
-    return total
+    return storage.parse_duration(s)
+
+
+def _get_duration(row: Dict[str, object]) -> int:
+    """Safely extract duration from a row dictionary."""
+    duration = row.get("duration", 0)
+    if isinstance(duration, int):
+        return duration
+    if isinstance(duration, str):
+        try:
+            return int(duration)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _get_start(row: Dict[str, object]) -> Optional[dt.datetime]:
+    """Safely extract start datetime from a row dictionary."""
+    start = row.get("start")
+    if isinstance(start, dt.datetime):
+        return start
+    return None
 
 
 def _parse_start(s: Optional[str], duration_s: int) -> dt.datetime:
@@ -67,17 +57,17 @@ def postfokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--duration",
         "-d",
-        help="Duration (e.g., 25m, 1h30m, 1500s). Omit to show statistics (optionally filter by --title).",
+        help="Duration (e.g., 25m, 1h30m, 1h30s, 1500s).",
     )
     p.add_argument(
         "--start",
         "-s",
-        help="Start time (ISO or HH:MM). Default: infer from now - duration",
+        help="Start time (ISO or HH:MM). If omitted, inferred from now - duration",
     )
     p.add_argument(
         "--end",
         "-e",
-        help="End time (ISO or HH:MM). If omitted, infer from start + duration",
+        help="End time (ISO or HH:MM). If omitted, inferred from start + duration",
     )
     p.add_argument(
         "--title",
@@ -86,9 +76,9 @@ def postfokus_configure_parser(p: argparse.ArgumentParser) -> None:
         default=None,
     )
     p.add_argument(
-        "--with-titles",
+        "--titles",
         action="store_true",
-        help="When showing statistics, also show per-title breakdown",
+        help="Show per-title breakdown",
     )
 
 
@@ -101,14 +91,26 @@ def _print_statistics(title_filter: Optional[str] = None) -> int:
         print(msgs.stats_line("sessions", "0"))
         return 0
     total_sessions = len(rows)
-    total_seconds = sum(int(r["duration"]) for r in rows)
+    total_seconds = sum(_get_duration(r) for r in rows)
     now = dt.datetime.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = today_start - dt.timedelta(days=today_start.weekday())
     month_start = today_start.replace(day=1)
-    today_seconds = sum(r["duration"] for r in rows if r["start"] >= today_start)
-    week_seconds = sum(r["duration"] for r in rows if r["start"] >= week_start)
-    month_seconds = sum(r["duration"] for r in rows if r["start"] >= month_start)
+    today_seconds = sum(
+        _get_duration(r)
+        for r in rows
+        if (start := _get_start(r)) is not None and start >= today_start
+    )
+    week_seconds = sum(
+        _get_duration(r)
+        for r in rows
+        if (start := _get_start(r)) is not None and start >= week_start
+    )
+    month_seconds = sum(
+        _get_duration(r)
+        for r in rows
+        if (start := _get_start(r)) is not None and start >= month_start
+    )
     avg_seconds = total_seconds // total_sessions if total_sessions else 0
     print("--------------------------------")
     print(msgs.stats_line("sessions", str(total_sessions)))
@@ -126,12 +128,13 @@ def _print_statistics_by_title() -> int:
     if not rows:
         print(msgs.stats_line("sessions", "0"))
         return 0
-    agg = {}
+    agg: Dict[str, Dict[str, int]] = {}
     for r in rows:
-        title = (r.get("title") or "").strip()
+        title_str = r.get("title")
+        title = str(title_str).strip() if title_str else ""
         entry = agg.setdefault(title, {"sessions": 0, "total": 0})
         entry["sessions"] += 1
-        entry["total"] += int(r.get("duration", 0))
+        entry["total"] += _get_duration(r)
     items = sorted(agg.items(), key=lambda kv: kv[1]["total"], reverse=True)
     for title, data in items:
         label = title if title else "(unnamed)"
@@ -144,13 +147,13 @@ def _print_statistics_by_title() -> int:
 def postfokus_run(args: argparse.Namespace) -> int:
     if not args.duration:
         # No duration -> show statistics
-        if args.with_titles and not args.title:
+        if args.titles and not args.title:
             return _print_statistics_by_title()
         return _print_statistics(args.title or None)
     try:
         duration_s = _parse_duration(args.duration)
     except Exception as e:
-        print(msgs.invalid_duration(str(e)))
+        print(msgs.invalid_X(str(e), "duration"))
         return 2
     # Parse optional end first if provided
     end: Optional[dt.datetime] = None
@@ -159,7 +162,7 @@ def postfokus_run(args: argparse.Namespace) -> int:
             # Reuse start parser semantics (ISO or HH:MM today)
             end = _parse_start(args.end, duration_s)
         except Exception as e:
-            print(msgs.invalid_end(str(e)))
+            print(msgs.invalid_X(str(e), "end"))
             return 2
     # Parse or infer start
     try:
@@ -171,7 +174,7 @@ def postfokus_run(args: argparse.Namespace) -> int:
             else:
                 start = _parse_start(None, duration_s)
     except Exception as e:
-        print(msgs.invalid_start(str(e)))
+        print(msgs.invalid_X(str(e), "start"))
         return 2
     # Infer end if not provided
     if end is None:
