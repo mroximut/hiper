@@ -15,19 +15,18 @@ DEFAULT_NICK = "(not set)"
 
 
 def set_configure_parser(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--lang", help="Language code (e.g., en, tr)")
+    p.add_argument("--lang", help="Language code")
     p.add_argument("--nick", help="Your nickname")
     p.add_argument("--savedir", help="Directory to save sessions CSV (absolute path)")
     p.add_argument(
         "--clock",
-        help="Show clock display (digital/dots/bar). "
-        "To show a loading bar use format 'bar=duration', e.g. --clock bar=1h15m. "
+        help="To show a loading bar use format 'bar=duration', e.g. --clock bar=1h15m. "
         "Otherwise use --clock digital or --clock dots",
     )
     p.add_argument(
         "--bar-width",
         type=int,
-        help="Width of the progress bar (default: 50)",
+        help="Width of the progress bar (default: 42)",
     )
     p.add_argument(
         "--estimate-bar",

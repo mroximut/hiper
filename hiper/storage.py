@@ -20,6 +20,7 @@ DATA_DIR = get_data_dir()
 
 SESSIONS_CSV = os.path.join(DATA_DIR, "sessions.csv")
 GOALS_CSV = os.path.join(DATA_DIR, "goals.csv")
+READ_CSV = os.path.join(DATA_DIR, "read.csv")
 
 
 def _ensure_csv_header(path: str) -> None:
@@ -380,3 +381,72 @@ def get_time_worked_for_title(
                 except (ValueError, TypeError):
                     pass
     return total
+
+
+def _ensure_read_csv_header(path: str) -> None:
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["title", "length", "current_page"])
+
+
+def load_read_csv() -> List[Dict[str, object]]:
+    """Load reading list from read.csv."""
+    data_dir = get_data_dir()
+    read_csv = os.path.join(data_dir, "read.csv")
+    _ensure_read_csv_header(read_csv)
+
+    rows: List[Dict[str, object]] = []
+    if not os.path.exists(read_csv) or os.path.getsize(read_csv) == 0:
+        return rows
+
+    with open(read_csv, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                title = row.get("title", "").strip()
+                if not title:
+                    continue
+
+                length_str = row.get("length", "").strip()
+                length = int(length_str) if length_str else 0
+
+                current_page_str = row.get("current_page", "").strip()
+                current_page = int(current_page_str) if current_page_str else 0
+
+                rows.append(
+                    {
+                        "title": title,
+                        "length": length,
+                        "current_page": current_page,
+                    }
+                )
+            except Exception:
+                continue
+
+    return rows
+
+
+def save_read_csv(reads: List[Dict[str, object]]) -> str:
+    """Save reading list to read.csv."""
+    data_dir = get_data_dir()
+    read_csv = os.path.join(data_dir, "read.csv")
+    _ensure_read_csv_header(read_csv)
+
+    with open(read_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["title", "length", "current_page"])
+        for read_item in reads:
+            title = read_item.get("title", "")
+            length = read_item.get("length", 0)
+            current_page = read_item.get("current_page", 0)
+
+            writer.writerow(
+                [
+                    title,
+                    str(length) if length else "",
+                    str(current_page) if current_page else "",
+                ]
+            )
+
+    return read_csv
