@@ -12,6 +12,7 @@ DEFAULT_CLOCK_LENGTH = "60m"
 DEFAULT_ESTIMATE_BAR = "true"
 DEFAULT_LANG = "en"
 DEFAULT_NICK = "(not set)"
+DEFAULT_WORK_PER_DAY = "8h"
 
 
 def set_configure_parser(p: argparse.ArgumentParser) -> None:
@@ -32,6 +33,10 @@ def set_configure_parser(p: argparse.ArgumentParser) -> None:
         "--estimate-bar",
         help="Show estimate progress bar in fokus sessions (true/false)",
     )
+    p.add_argument(
+        "--work-per-day",
+        help="Workable hours per day for planning (default: 8h)",
+    )
     p.add_argument("--show", action="store_true", help="Show current settings")
 
 
@@ -44,6 +49,7 @@ def set_run(args: argparse.Namespace) -> int:
         bar_width = config.get_config("bar_width", DEFAULT_BAR_WIDTH)
         clock_length = config.get_config("clock_length", DEFAULT_CLOCK_LENGTH)
         estimate_bar = config.get_config("estimate_bar", DEFAULT_ESTIMATE_BAR)
+        work_per_day = config.get_config("work_per_day", DEFAULT_WORK_PER_DAY)
 
         print("Current settings:")
         print(f"  lang: {lang}")
@@ -53,6 +59,7 @@ def set_run(args: argparse.Namespace) -> int:
         print(f"  bar_width: {bar_width}")
         print(f"  clock_length: {clock_length}")
         print(f"  estimate_bar: {estimate_bar}")
+        print(f"  work_per_day: {work_per_day}")
         return 0
 
     # Set values
@@ -116,12 +123,26 @@ def set_run(args: argparse.Namespace) -> int:
         config.set_config("estimate_bar", estimate_bar)
         updated.append(f"estimate_bar={estimate_bar}")
 
+    if args.work_per_day is not None:
+        work_per_day = args.work_per_day.strip()
+        try:
+            seconds = storage.parse_duration(work_per_day)
+            if seconds <= 0:
+                raise ValueError("must be greater than zero")
+        except Exception as e:
+            print(f"Error: invalid work-per-day '{work_per_day}': {e}")
+            return 1
+        # Store original string so display matches user intent.
+        config.set_config("work_per_day", work_per_day)
+        updated.append(f"work_per_day={work_per_day}")
+
     if updated:
         print(f"Updated: {', '.join(updated)}")
     else:
         print("No settings specified. Use --show to see current settings.")
         print(
-            "Available options: --lang, --nick, --savedir, --clock, --bar-width, --estimate-bar"
+            "Available options: --lang, --nick, --savedir, --clock, --bar-width, "
+            "--estimate-bar, --work-per-day"
         )
 
     return 0

@@ -118,8 +118,7 @@ def _tick_render(
             # Estimate reached or exceeded
             estimate_line = (
                 f":>{bar} {int(min(progress, 1.0) * 100)}% "
-                f"(estimate: {_format_duration(estimate_seconds)}, "
-                f"worked: {_format_duration(total_time_worked)})"
+                f"(worked: {_format_duration(total_time_worked)})"
             )
         else:
             estimate_line = (

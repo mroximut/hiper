@@ -80,12 +80,62 @@ def postfokus_configure_parser(p: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Show per-title breakdown",
     )
+    p.add_argument(
+        "--since",
+        help="Only include sessions starting on/after this date (YYYY-MM-DD).",
+    )
+    p.add_argument(
+        "--until",
+        help="Only include sessions starting on/before this date (YYYY-MM-DD).",
+    )
 
 
-def _print_statistics(title_filter: Optional[str] = None) -> int:
+def _filter_rows_range(
+    rows: list[Dict[str, object]],
+    since: Optional[dt.date],
+    until: Optional[dt.date],
+) -> list[Dict[str, object]]:
+    filtered: list[Dict[str, object]] = []
+    for r in rows:
+        start = _get_start(r)
+        if start is None:
+            continue
+        start_date = start.date()
+        if since is not None and start_date < since:
+            continue
+        if until is not None and start_date > until:
+            continue
+        filtered.append(r)
+    return filtered
+
+
+def _parse_since(since_str: Optional[str]) -> Optional[dt.date]:
+    if not since_str:
+        return None
+    try:
+        return dt.datetime.strptime(since_str.strip(), "%Y-%m-%d").date()
+    except Exception:
+        raise ValueError("since must be YYYY-MM-DD")
+
+
+def _parse_until(until_str: Optional[str]) -> Optional[dt.date]:
+    if not until_str:
+        return None
+    try:
+        return dt.datetime.strptime(until_str.strip(), "%Y-%m-%d").date()
+    except Exception:
+        raise ValueError("until must be YYYY-MM-DD")
+
+
+def _print_statistics(
+    title_filter: Optional[str] = None,
+    since: Optional[dt.date] = None,
+    until: Optional[dt.date] = None,
+) -> int:
     rows = storage.load_sessions_csv()
     if title_filter:
         rows = [r for r in rows if (r.get("title") or "") == title_filter]
+    rows = _filter_rows_range(rows, since, until)
     print(msgs.stats_header(title_filter))
     if not rows:
         print(msgs.stats_line("sessions", "0"))
@@ -94,8 +144,8 @@ def _print_statistics(title_filter: Optional[str] = None) -> int:
     total_seconds = sum(_get_duration(r) for r in rows)
     now = dt.datetime.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = today_start - dt.timedelta(days=today_start.weekday())
-    month_start = today_start.replace(day=1)
+    last7_start = today_start - dt.timedelta(days=6)
+    last30_start = today_start - dt.timedelta(days=29)
     today_seconds = sum(
         _get_duration(r)
         for r in rows
@@ -104,26 +154,85 @@ def _print_statistics(title_filter: Optional[str] = None) -> int:
     week_seconds = sum(
         _get_duration(r)
         for r in rows
-        if (start := _get_start(r)) is not None and start >= week_start
+        if (start := _get_start(r)) is not None and start >= last7_start
     )
     month_seconds = sum(
         _get_duration(r)
         for r in rows
-        if (start := _get_start(r)) is not None and start >= month_start
+        if (start := _get_start(r)) is not None and start >= last30_start
     )
     avg_seconds = total_seconds // total_sessions if total_sessions else 0
     print("--------------------------------")
     print(msgs.stats_line("sessions", str(total_sessions)))
     print(msgs.stats_line("total", storage.format_hms(total_seconds)))
-    print(msgs.stats_line("avg", storage.format_hms(avg_seconds)))
     print(msgs.stats_line("today", storage.format_hms(today_seconds)))
-    print(msgs.stats_line("week", storage.format_hms(week_seconds)))
-    print(msgs.stats_line("month", storage.format_hms(month_seconds)))
+    print(msgs.stats_line("last 7 days", storage.format_hms(week_seconds)))
+    print(msgs.stats_line("last 30 days", storage.format_hms(month_seconds)))
+    # Averages per day (including today)
+    min_date = None
+    for r in rows:
+        start = _get_start(r)
+        if start is None:
+            continue
+        start_date = start.date()
+        if min_date is None or start_date < min_date:
+            min_date = start_date
+    days_total = (today_start.date() - min_date).days + 1 if min_date else 0
+    avg_per_day_all = total_seconds // days_total if days_total > 0 else 0
+
+    def _avg_window(
+        start_date: dt.date, end_date: dt.date, rows_subset: list[Dict[str, object]]
+    ) -> int:
+        span_days = (end_date - start_date).days + 1
+        if span_days <= 0:
+            return 0
+        window_total = sum(_get_duration(r) for r in rows_subset)
+        return window_total // span_days
+
+    window_start_7 = last7_start.date()
+    window_rows_7 = [
+        r
+        for r in rows
+        if (start := _get_start(r)) is not None
+        and start.date() >= window_start_7
+        and start.date() <= today_start.date()
+    ]
+    avg_per_day_last7 = _avg_window(window_start_7, today_start.date(), window_rows_7)
+
+    window_start_30 = last30_start.date()
+    window_rows_30 = [
+        r
+        for r in rows
+        if (start := _get_start(r)) is not None
+        and start.date() >= window_start_30
+        and start.date() <= today_start.date()
+    ]
+    avg_per_day_last30 = _avg_window(
+        window_start_30, today_start.date(), window_rows_30
+    )
+
+    print(msgs.stats_line("average per day", storage.format_hms(avg_per_day_all)))
+    print(
+        msgs.stats_line(
+            "average per day last 7 days",
+            storage.format_hms(avg_per_day_last7),
+        )
+    )
+    print(
+        msgs.stats_line(
+            "average per day last 30 days",
+            storage.format_hms(avg_per_day_last30),
+        )
+    )
+    print(msgs.stats_line("average session length", storage.format_hms(avg_seconds)))
     return 0
 
 
-def _print_statistics_by_title() -> int:
+def _print_statistics_by_title(
+    since: Optional[dt.date] = None, until: Optional[dt.date] = None
+) -> int:
     rows = storage.load_sessions_csv()
+    rows = _filter_rows_range(rows, since, until)
     print(msgs.stats_header("by title"))
     if not rows:
         print(msgs.stats_line("sessions", "0"))
@@ -141,15 +250,23 @@ def _print_statistics_by_title() -> int:
         print("--------------------------------")
         print(msgs.stats_line(f"{label} sessions", str(data["sessions"])))
         print(msgs.stats_line(f"{label} total", storage.format_hms(data["total"])))
+    print("--------------------------------")
     return 0
 
 
 def postfokus_run(args: argparse.Namespace) -> int:
+    try:
+        since_date = _parse_since(args.since)
+        until_date = _parse_until(args.until)
+    except ValueError as e:
+        print(msgs.invalid_X(str(e), "since"))
+        return 2
+
     if not args.duration:
         # No duration -> show statistics
         if args.titles and not args.title:
-            return _print_statistics_by_title()
-        return _print_statistics(args.title or None)
+            return _print_statistics_by_title(since_date, until_date)
+        return _print_statistics(args.title or None, since_date, until_date)
     try:
         duration_s = _parse_duration(args.duration)
     except Exception as e:
