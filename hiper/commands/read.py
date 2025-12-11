@@ -15,6 +15,11 @@ def read_configure_parser(p: argparse.ArgumentParser) -> None:
     add_parser.add_argument(
         "--length", "-l", type=int, required=True, help="Total number of pages"
     )
+    add_parser.add_argument(
+        "--time-per-page",
+        "-P",
+        help="Optional duration per page (e.g. 45s, 2m, 1h30m)",
+    )
 
     # update subcommand
     update_parser = subparsers.add_parser("update", help="Update reading progress")
@@ -25,6 +30,11 @@ def read_configure_parser(p: argparse.ArgumentParser) -> None:
     )
     update_group.add_argument(
         "--at", "-a", type=int, help="Set current_page to this value"
+    )
+    update_group.add_argument(
+        "--time-per-page",
+        "-P",
+        help="Optional duration per page (e.g. 45s, 2m, 1h30m)",
     )
 
     # Default: show progress when --title is provided (no subcommand)
@@ -41,7 +51,7 @@ def _format_progress_bar(title: str, length: int, current_page: int) -> str:
     percentage = min(percentage, 100.0)
 
     # Create progress bar (similar to fokus command)
-    bar_width = int(config.get_config("bar_width", str(DEFAULT_BAR_WIDTH)))
+    bar_width = int(config.get_config("bar_width", DEFAULT_BAR_WIDTH))
     filled = int((percentage / 100) * bar_width)
     bar = "█" * filled + "░" * (bar_width - filled)
 
@@ -65,14 +75,22 @@ def _show_progress(title: str) -> bool:
 
     length = book.get("length", 0)
     current_page = book.get("current_page", 0)
+    time_per_page_seconds = book.get("time_per_page_seconds", 0)
 
     # Ensure types are int
     if not isinstance(length, int):
         length = 0
     if not isinstance(current_page, int):
         current_page = 0
+    if not isinstance(time_per_page_seconds, int):
+        time_per_page_seconds = 0
 
     print(_format_progress_bar(title, length, current_page))
+
+    # Show estimated remaining time if available
+    estimate_line = _format_estimated_time(length, current_page, time_per_page_seconds)
+    if estimate_line:
+        print(estimate_line)
 
     # Ask user if they want to start
     while True:
@@ -97,14 +115,47 @@ def _show_all_progress() -> None:
         title_obj = book.get("title", "")
         length_obj = book.get("length", 0)
         current_page_obj = book.get("current_page", 0)
+        time_per_page_obj = book.get("time_per_page_seconds", 0)
 
         # Ensure types
         title = str(title_obj) if title_obj else ""
         length = int(length_obj) if isinstance(length_obj, int) else 0
         current_page = int(current_page_obj) if isinstance(current_page_obj, int) else 0
+        time_per_page_seconds = (
+            int(time_per_page_obj) if isinstance(time_per_page_obj, int) else 0
+        )
 
         print(_format_progress_bar(title, length, current_page))
+        estimate_line = _format_estimated_time(
+            length, current_page, time_per_page_seconds
+        )
+        if estimate_line:
+            print(estimate_line)
         print()  # Empty line between books
+
+
+def _format_estimated_time(
+    length: int, current_page: int, time_per_page_seconds: int
+) -> str:
+    """Return a formatted estimate to finish if data is available, else ''."""
+    try:
+        length_int = int(length)
+        current_page_int = int(current_page)
+        time_per_page_int = int(time_per_page_seconds)
+    except (TypeError, ValueError):
+        return ""
+
+    if length_int <= 0 or time_per_page_int <= 0:
+        return ""
+    remaining_pages = max(length_int - current_page_int, 0)
+    if remaining_pages == 0:
+        return ""
+    remaining_seconds = remaining_pages * time_per_page_int
+    formatted = storage.format_hms(remaining_seconds)
+    return (
+        f"Estimated time to finish: {formatted} "
+        f"({remaining_pages} pages left at {time_per_page_int}s/page)"
+    )
 
 
 def read_run(args: argparse.Namespace) -> int:
@@ -113,6 +164,14 @@ def read_run(args: argparse.Namespace) -> int:
     if subcommand == "add":
         title = args.title.strip()
         length = args.length
+        time_per_page_seconds = 0
+
+        if args.time_per_page:
+            try:
+                time_per_page_seconds = storage.parse_duration(args.time_per_page)
+            except ValueError as e:
+                print(f"Error parsing --time-per-page: {e}")
+                return 1
 
         if length <= 0:
             print(f"Error: length must be > 0, got {length}")
@@ -128,13 +187,29 @@ def read_run(args: argparse.Namespace) -> int:
                 return 1
 
         # Add new entry
-        reads.append({"title": title, "length": length, "current_page": 0})
+        reads.append(
+            {
+                "title": title,
+                "length": length,
+                "current_page": 0,
+                "time_per_page_seconds": time_per_page_seconds,
+            }
+        )
         storage.save_read_csv(reads)
         print(f"Added '{title}' with {length} pages to read.csv")
         return 0
 
     elif subcommand == "update":
         title = args.title.strip()
+        time_per_page_seconds = None
+
+        if args.time_per_page:
+            try:
+                parsed = storage.parse_duration(args.time_per_page)
+                time_per_page_seconds = parsed
+            except ValueError as e:
+                print(f"Error parsing --time-per-page: {e}")
+                return 1
 
         # Load existing reads
         reads = storage.load_read_csv()
@@ -178,6 +253,12 @@ def read_run(args: argparse.Namespace) -> int:
 
             book["current_page"] = new_page
             print(f"Updated '{title}': current_page = {new_page}")
+
+        if time_per_page_seconds is not None:
+            book["time_per_page_seconds"] = time_per_page_seconds
+            print(
+                f"Updated '{title}': time_per_page_seconds = {time_per_page_seconds}s"
+            )
 
         reads[book_index] = book
         storage.save_read_csv(reads)

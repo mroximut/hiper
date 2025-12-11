@@ -375,7 +375,9 @@ def _ensure_read_csv_header(path: str) -> None:
     if not os.path.exists(path) or os.path.getsize(path) == 0:
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["title", "length", "current_page"])
+            writer.writerow(
+                ["title", "length", "current_page", "time_per_page_seconds"]
+            )
 
 
 def load_read_csv() -> List[Dict[str, object]]:
@@ -401,11 +403,15 @@ def load_read_csv() -> List[Dict[str, object]]:
             current_page_str = row.get("current_page", "").strip()
             current_page = int(current_page_str) if current_page_str else 0
 
+            time_per_page_str = row.get("time_per_page_seconds", "").strip()
+            time_per_page_seconds = int(time_per_page_str) if time_per_page_str else 0
+
             rows.append(
                 {
                     "title": title,
                     "length": length,
                     "current_page": current_page,
+                    "time_per_page_seconds": time_per_page_seconds,
                 }
             )
 
@@ -420,17 +426,19 @@ def save_read_csv(reads: List[Dict[str, object]]) -> str:
 
     with open(read_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["title", "length", "current_page"])
+        writer.writerow(["title", "length", "current_page", "time_per_page_seconds"])
         for read_item in reads:
             title = read_item.get("title", "")
             length = read_item.get("length", 0)
             current_page = read_item.get("current_page", 0)
+            time_per_page_seconds = read_item.get("time_per_page_seconds", 0)
 
             writer.writerow(
                 [
                     title,
                     str(length) if length else "",
                     str(current_page) if current_page else "",
+                    str(time_per_page_seconds) if time_per_page_seconds else "",
                 ]
             )
 
