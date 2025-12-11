@@ -17,6 +17,7 @@ DATA_DIR = get_data_dir()
 SESSIONS_CSV = os.path.join(DATA_DIR, "sessions.csv")
 GOALS_CSV = os.path.join(DATA_DIR, "goals.csv")
 READ_CSV = os.path.join(DATA_DIR, "read.csv")
+LOG_CSV = os.path.join(DATA_DIR, "log.csv")
 
 
 def _ensure_csv_header(path: str) -> None:
@@ -434,3 +435,43 @@ def save_read_csv(reads: List[Dict[str, object]]) -> str:
             )
 
     return read_csv
+
+
+def _ensure_log_csv_header(path: str) -> None:
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["message", "timestamp"])
+
+
+def append_log_csv(message: str, when: Optional[dt.datetime] = None) -> str:
+    """Append a message with timestamp to log.csv."""
+    data_dir = get_data_dir()
+    log_csv = os.path.join(data_dir, "log.csv")
+    _ensure_log_csv_header(log_csv)
+    timestamp = when or dt.datetime.now()
+    with open(log_csv, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([message, timestamp.isoformat()])
+    return log_csv
+
+
+def load_log_csv() -> List[Dict[str, object]]:
+    """Load logs as a list of dicts."""
+    data_dir = get_data_dir()
+    log_csv = os.path.join(data_dir, "log.csv")
+    if not os.path.exists(log_csv) or os.path.getsize(log_csv) == 0:
+        return []
+
+    rows: List[Dict[str, object]] = []
+    with open(log_csv, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            message = row.get("message", "")
+            ts_str = row.get("timestamp", "")
+            try:
+                ts = dt.datetime.fromisoformat(ts_str) if ts_str else None
+            except ValueError:
+                ts = None
+            rows.append({"message": message, "timestamp": ts})
+    return rows
