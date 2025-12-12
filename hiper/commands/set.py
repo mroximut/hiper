@@ -10,6 +10,7 @@ DEFAULT_BAR_WIDTH = "42"
 DEFAULT_CLOCK = "bar"
 DEFAULT_CLOCK_LENGTH = "60m"
 DEFAULT_ESTIMATE_BAR = "true"
+DEFAULT_COUNTDOWN = "false"
 DEFAULT_LANG = "en"
 DEFAULT_NICK = "(not set)"
 DEFAULT_WORK_PER_DAY = "8h"
@@ -37,6 +38,10 @@ def set_configure_parser(p: argparse.ArgumentParser) -> None:
         "--work-per-day",
         help="Workable hours per day for planning (default: 8h)",
     )
+    p.add_argument(
+        "--countdown",
+        help="Display countdown instead of target in estimate and clock bars (true/false)",
+    )
     p.add_argument("--show", action="store_true", help="Show current settings")
 
 
@@ -49,6 +54,7 @@ def set_run(args: argparse.Namespace) -> int:
         bar_width = config.get_config("bar_width", DEFAULT_BAR_WIDTH)
         clock_length = config.get_config("clock_length", DEFAULT_CLOCK_LENGTH)
         estimate_bar = config.get_config("estimate_bar", DEFAULT_ESTIMATE_BAR)
+        countdown = config.get_config("countdown", DEFAULT_COUNTDOWN)
         work_per_day = config.get_config("work_per_day", DEFAULT_WORK_PER_DAY)
 
         print("Current settings:")
@@ -59,6 +65,7 @@ def set_run(args: argparse.Namespace) -> int:
         print(f"  bar_width: {bar_width}")
         print(f"  clock_length: {clock_length}")
         print(f"  estimate_bar: {estimate_bar}")
+        print(f"  countdown: {countdown}")
         print(f"  work_per_day: {work_per_day}")
         return 0
 
@@ -123,6 +130,14 @@ def set_run(args: argparse.Namespace) -> int:
         config.set_config("estimate_bar", estimate_bar)
         updated.append(f"estimate_bar={estimate_bar}")
 
+    if args.countdown is not None:
+        countdown = args.countdown.strip().lower()
+        if countdown not in ("true", "false"):
+            print(f"Error: countdown must be 'true' or 'false': {countdown}")
+            return 1
+        config.set_config("countdown", countdown)
+        updated.append(f"countdown={countdown}")
+
     if args.work_per_day is not None:
         work_per_day = args.work_per_day.strip()
         try:
@@ -142,7 +157,7 @@ def set_run(args: argparse.Namespace) -> int:
         print("No settings specified. Use --show to see current settings.")
         print(
             "Available options: --lang, --nick, --savedir, --clock, --bar-width, "
-            "--estimate-bar, --work-per-day"
+            "--estimate-bar, --countdown, --work-per-day"
         )
 
     return 0

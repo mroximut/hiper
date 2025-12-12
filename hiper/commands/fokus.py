@@ -15,6 +15,7 @@ from .set import (
     DEFAULT_BAR_WIDTH,
     DEFAULT_CLOCK,
     DEFAULT_CLOCK_LENGTH,
+    DEFAULT_COUNTDOWN,
     DEFAULT_ESTIMATE_BAR,
 )
 
@@ -95,6 +96,9 @@ def _tick_render(
     estimate_bar_enabled = (
         config.get_config("estimate_bar", DEFAULT_ESTIMATE_BAR).lower() == "true"
     )
+    countdown_enabled = (
+        config.get_config("countdown", DEFAULT_COUNTDOWN).lower() == "true"
+    )
     estimate_line = None
 
     # Render estimate bar if enabled and we have estimate data
@@ -121,10 +125,17 @@ def _tick_render(
                 f"(worked: {_format_duration(total_time_worked)})"
             )
         else:
-            estimate_line = (
-                f":>{bar} {int(progress * 100)}% "
-                f"(estimate: {_format_duration(estimate_seconds)})"
-            )
+            if countdown_enabled:
+                remaining = estimate_seconds - total_time_worked
+                estimate_line = (
+                    f":>{bar} {int(progress * 100)}% "
+                    f"(remaining: {_format_duration(remaining)})"
+                )
+            else:
+                estimate_line = (
+                    f":>{bar} {int(progress * 100)}% "
+                    f"(estimate: {_format_duration(estimate_seconds)})"
+                )
 
     # Render normal clock
     if clock == "dots":
@@ -161,9 +172,14 @@ def _tick_render(
                 f"(total: {_format_duration(elapsed_s)})"
             )
         else:
-            line = (
-                f":>{bar} {int(progress * 100)}% (goal: {_format_duration(target_s)})"
-            )
+            if countdown_enabled:
+                remaining = target_s - elapsed_s
+                line = (
+                    f":>{bar} {int(progress * 100)}% "
+                    f"(remaining: {_format_duration(remaining)})"
+                )
+            else:
+                line = f":>{bar} {int(progress * 100)}% (goal: {_format_duration(target_s)})"
     else:
         timer = _format_duration(elapsed_s)
         line = f":>{timer}"
