@@ -195,7 +195,10 @@ def _tick_render(
             print(f"\033[2A\r{line}\033[K\n{estimate_line}\033[K\n", end="", flush=True)
     else:
         # No estimate bar: just render normal clock
-        print(f"\r{line}", end="", flush=True)
+        if is_first_render:
+            print(f"{line}\n", end="", flush=True)
+        else:
+            print(f"\033[1A\r{line}\033[K\n", end="", flush=True)
 
 
 def _finalize_render() -> None:
