@@ -93,8 +93,7 @@ def log_run(args: argparse.Namespace) -> int:
         return _print_logs_today()
 
     # Append message and then show today's logs
-    # path = storage.append_log_csv(message, dt.datetime.now())
-    # print(f"Logged '{message}' to {path}")
+    storage.append_log_csv(message, dt.datetime.now())
     return _print_logs_today()
 
 
