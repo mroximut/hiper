@@ -18,6 +18,7 @@ SESSIONS_CSV = os.path.join(DATA_DIR, "sessions.csv")
 GOALS_CSV = os.path.join(DATA_DIR, "goals.csv")
 READ_CSV = os.path.join(DATA_DIR, "read.csv")
 LOG_CSV = os.path.join(DATA_DIR, "log.csv")
+HABITS_CSV = os.path.join(DATA_DIR, "habits.csv")
 
 
 def _ensure_csv_header(path: str) -> None:
@@ -483,3 +484,68 @@ def load_log_csv() -> List[Dict[str, object]]:
                 ts = None
             rows.append({"message": message, "timestamp": ts})
     return rows
+
+
+def _ensure_habits_csv_header(path: str) -> None:
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["name", "frequency", "created_at"])
+
+
+def load_habits_csv() -> List[Dict[str, object]]:
+    """Load habits from habits.csv."""
+    data_dir = get_data_dir()
+    habits_csv = os.path.join(data_dir, "habits.csv")
+    _ensure_habits_csv_header(habits_csv)
+
+    rows: List[Dict[str, object]] = []
+    if not os.path.exists(habits_csv) or os.path.getsize(habits_csv) == 0:
+        return rows
+
+    with open(habits_csv, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            name = row.get("name", "").strip()
+            frequency = row.get("frequency", "").strip()
+            if not name:
+                continue
+
+            created_at_str = row.get("created_at", "").strip()
+            created_at = None
+            if created_at_str:
+                try:
+                    created_at = dt.datetime.fromisoformat(created_at_str)
+                except ValueError:
+                    # If parsing fails, use current time as fallback
+                    created_at = dt.datetime.now()
+            else:
+                # For backward compatibility, use current time if missing
+                created_at = dt.datetime.now()
+
+            rows.append(
+                {"name": name, "frequency": frequency, "created_at": created_at}
+            )
+    return rows
+
+
+def save_habits_csv(habits: List[Dict[str, object]]) -> str:
+    """Save habits to habits.csv."""
+    data_dir = get_data_dir()
+    habits_csv = os.path.join(data_dir, "habits.csv")
+    _ensure_habits_csv_header(habits_csv)
+
+    with open(habits_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["name", "frequency", "created_at"])
+        for habit in habits:
+            name = habit.get("name", "")
+            frequency = habit.get("frequency", "")
+            created_at = habit.get("created_at")
+            if isinstance(created_at, dt.datetime):
+                created_at_str = created_at.isoformat()
+            else:
+                # Fallback to current time if not a datetime
+                created_at_str = dt.datetime.now().isoformat()
+            writer.writerow([name, frequency, created_at_str])
+    return habits_csv
