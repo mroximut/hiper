@@ -21,12 +21,13 @@ def register_command(cmd: Command):
 
 def load_builtin_commands():
     """Load all builtin commands into the registry."""
-    from . import backup, finish, fokus, log, postfokus, prefokus, read, set
+    from . import backup, finish, fokus, log, pause, postfokus, prefokus, read, set
 
     register_command(backup.get_command())
     register_command(finish.get_command())
     register_command(fokus.get_command())
     register_command(log.get_command())
+    register_command(pause.get_command())
     register_command(postfokus.get_command())
     register_command(prefokus.get_command())
     register_command(read.get_command())

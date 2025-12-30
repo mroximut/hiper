@@ -14,6 +14,7 @@ DEFAULT_COUNTDOWN = "false"
 DEFAULT_LANG = "en"
 DEFAULT_NICK = "(not set)"
 DEFAULT_WORK_PER_DAY = "8h"
+DEFAULT_PAUSE_LENGTH = "15m"
 
 
 def set_configure_parser(p: argparse.ArgumentParser) -> None:
@@ -42,6 +43,10 @@ def set_configure_parser(p: argparse.ArgumentParser) -> None:
         "--countdown",
         help="Display countdown instead of target in estimate and clock bars (true/false)",
     )
+    p.add_argument(
+        "--pause-length",
+        help="Default pause duration (e.g., 15m, 1h30m, 45s). Default: 15m",
+    )
     p.add_argument("--show", action="store_true", help="Show current settings")
 
 
@@ -56,6 +61,7 @@ def set_run(args: argparse.Namespace) -> int:
         estimate_bar = config.get_config("estimate_bar", DEFAULT_ESTIMATE_BAR)
         countdown = config.get_config("countdown", DEFAULT_COUNTDOWN)
         work_per_day = config.get_config("work_per_day", DEFAULT_WORK_PER_DAY)
+        pause_length = config.get_config("pause_length", DEFAULT_PAUSE_LENGTH)
 
         print("Current settings:")
         print(f"  lang: {lang}")
@@ -67,6 +73,7 @@ def set_run(args: argparse.Namespace) -> int:
         print(f"  estimate_bar: {estimate_bar}")
         print(f"  countdown: {countdown}")
         print(f"  work_per_day: {work_per_day}")
+        print(f"  pause_length: {pause_length}")
         return 0
 
     # Set values
@@ -151,13 +158,26 @@ def set_run(args: argparse.Namespace) -> int:
         config.set_config("work_per_day", work_per_day)
         updated.append(f"work_per_day={work_per_day}")
 
+    if args.pause_length is not None:
+        pause_length = args.pause_length.strip()
+        try:
+            seconds = storage.parse_duration(pause_length)
+            if seconds <= 0:
+                raise ValueError("must be greater than zero")
+        except Exception as e:
+            print(f"Error: invalid pause-length '{pause_length}': {e}")
+            return 1
+        # Store original string so display matches user intent.
+        config.set_config("pause_length", pause_length)
+        updated.append(f"pause_length={pause_length}")
+
     if updated:
         print(f"Updated: {', '.join(updated)}")
     else:
         print("No settings specified. Use --show to see current settings.")
         print(
             "Available options: --lang, --nick, --savedir, --clock, --bar-width, "
-            "--estimate-bar, --countdown, --work-per-day"
+            "--estimate-bar, --countdown, --work-per-day, --pause-length"
         )
 
     return 0
