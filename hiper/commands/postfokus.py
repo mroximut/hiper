@@ -88,6 +88,11 @@ def postfokus_configure_parser(p: argparse.ArgumentParser) -> None:
         "--until",
         help="Only include sessions starting on/before this date (YYYY-MM-DD).",
     )
+    p.add_argument(
+        "--table",
+        action="store_true",
+        help="Show daily statistics in table format (last 10 days, or adjusted by --since/--until)",
+    )
 
 
 def _filter_rows_range(
@@ -228,6 +233,121 @@ def _print_statistics(
     return 0
 
 
+def _print_table(
+    title_filter: Optional[str] = None,
+    since: Optional[dt.date] = None,
+    until: Optional[dt.date] = None,
+    by_title: bool = False,
+) -> int:
+    """Print daily statistics in table format."""
+    rows = storage.load_sessions_csv()
+    if title_filter:
+        rows = [r for r in rows if (r.get("title") or "") == title_filter]
+    rows = _filter_rows_range(rows, since, until)
+
+    # Determine date range
+    today = dt.date.today()
+    if since and until:
+        # Both specified: use the range
+        start_date = since
+        end_date = until
+    elif since:
+        # Only since: show from since to today (up to 10 days)
+        start_date = since
+        end_date = min(today, since + dt.timedelta(days=9))
+    elif until:
+        # Only until: show last 10 days ending at until
+        end_date = until
+        start_date = end_date - dt.timedelta(days=9)
+    else:
+        # Default: last 10 days (including today)
+        end_date = today
+        start_date = today - dt.timedelta(days=9)
+
+    # Group sessions by date
+    daily_totals: Dict[dt.date, int] = {}
+    daily_by_title: Dict[str, Dict[dt.date, int]] = {}
+
+    for r in rows:
+        start = _get_start(r)
+        if start is None:
+            continue
+        session_date = start.date()
+        if session_date < start_date or session_date > end_date:
+            continue
+
+        duration = _get_duration(r)
+        if session_date not in daily_totals:
+            daily_totals[session_date] = 0
+        daily_totals[session_date] += duration
+
+        if by_title:
+            title_str = r.get("title")
+            title = str(title_str).strip() if title_str else "(unnamed)"
+            if title not in daily_by_title:
+                daily_by_title[title] = {}
+            if session_date not in daily_by_title[title]:
+                daily_by_title[title][session_date] = 0
+            daily_by_title[title][session_date] += duration
+
+    if by_title:
+        # Print table for each title
+        print(msgs.stats_header("by title (daily table)"))
+        titles = sorted(daily_by_title.keys())
+        for title in titles:
+            label = title if title else "(unnamed)"
+            print(f"\n{label}:")
+            title_table_parts: list[str] = []
+            current_date = start_date
+            while current_date <= end_date:
+                # Format date as "Thu 1 Jan" and pad to fixed width for alignment
+                day_name = current_date.strftime("%a")
+                day_num = str(current_date.day)  # Remove leading zero
+                month_name = current_date.strftime("%b")
+                date_str = f"{day_name} {day_num} {month_name}"
+                # Pad date string to fixed width (e.g., "Thu 10 Jan" is longest)
+                date_str_padded = f"{date_str:12}"
+                duration_seconds = daily_by_title[title].get(current_date, 0)
+                if duration_seconds > 0:
+                    title_table_parts.append(
+                        f"{date_str_padded}:   [{storage.format_hms(duration_seconds)}]"
+                    )
+                else:
+                    title_table_parts.append(f"{date_str_padded}:   []")
+                current_date += dt.timedelta(days=1)
+            print("\n".join(title_table_parts))
+        print("--------------------------------")
+        return 0
+    else:
+        # Print single table
+        if title_filter:
+            print(msgs.stats_header(title_filter))
+        else:
+            print(msgs.stats_header(None))
+        print("Daily table:")
+        main_table_parts: list[str] = []
+        current_date = start_date
+        while current_date <= end_date:
+            # Format date as "Thu 1 Jan" and pad to fixed width for alignment
+            day_name = current_date.strftime("%a")
+            day_num = str(current_date.day)  # Remove leading zero
+            month_name = current_date.strftime("%b")
+            date_str = f"{day_name} {day_num} {month_name}"
+            # Pad date string to fixed width (e.g., "Thu 10 Jan" is longest)
+            date_str_padded = f"{date_str:12}"
+            duration_seconds = daily_totals.get(current_date, 0)
+            if duration_seconds > 0:
+                main_table_parts.append(
+                    f"{date_str_padded}: [{storage.format_hms(duration_seconds)}]"
+                )
+            else:
+                main_table_parts.append(f"{date_str_padded}: []")
+            current_date += dt.timedelta(days=1)
+        print("\n".join(main_table_parts))
+        print("--------------------------------")
+        return 0
+
+
 def _print_statistics_by_title(
     since: Optional[dt.date] = None, until: Optional[dt.date] = None
 ) -> int:
@@ -264,6 +384,13 @@ def postfokus_run(args: argparse.Namespace) -> int:
 
     if not args.duration:
         # No duration -> show statistics
+        if args.table:
+            # Show table format
+            if args.titles and not args.title:
+                return _print_table(None, since_date, until_date, by_title=True)
+            return _print_table(
+                args.title or None, since_date, until_date, by_title=False
+            )
         if args.titles and not args.title:
             return _print_statistics_by_title(since_date, until_date)
         return _print_statistics(args.title or None, since_date, until_date)
