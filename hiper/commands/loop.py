@@ -90,6 +90,10 @@ def loop_configure_parser(p: argparse.ArgumentParser) -> None:
         "--since",
         help="Only include logs starting on/after this date (YYYY-MM-DD)",
     )
+    stats_parser.add_argument(
+        "--until",
+        help="Only include logs up to/on this date (YYYY-MM-DD)",
+    )
 
 
 def loop_run(args: argparse.Namespace) -> int:
@@ -207,6 +211,17 @@ def loop_run(args: argparse.Namespace) -> int:
                 )
                 return 1
 
+        # Parse --until date
+        until_date: Optional[dt.date] = None
+        if args.until:
+            try:
+                until_date = dt.datetime.strptime(args.until.strip(), "%Y-%m-%d").date()
+            except ValueError:
+                print(
+                    f"Error: invalid --until date '{args.until}'. Use YYYY-MM-DD format"
+                )
+                return 1
+
         # Load all habits
         habits = storage.load_habits_csv()
 
@@ -217,13 +232,21 @@ def loop_run(args: argparse.Namespace) -> int:
         # Load all logs
         logs = storage.load_log_csv()
 
-        # Filter logs by date if --since is provided
-        if since_date:
+        # Filter logs by date range if --since or --until is provided
+        if since_date or until_date:
             filtered_logs: List[Dict[str, object]] = []
             for log in logs:
                 ts = log.get("timestamp")
-                if isinstance(ts, dt.datetime) and ts.date() >= since_date:
-                    filtered_logs.append(log)
+                if not isinstance(ts, dt.datetime):
+                    continue
+                log_date = ts.date()
+                # Apply since filter
+                if since_date and log_date < since_date:
+                    continue
+                # Apply until filter
+                if until_date and log_date > until_date:
+                    continue
+                filtered_logs.append(log)
             logs = filtered_logs
 
         # Count occurrences of each habit name in logs
@@ -237,15 +260,82 @@ def loop_run(args: argparse.Namespace) -> int:
             else:
                 habit_counts[msg] = 1
 
+        # Build a map of completed dates for each habit
+        habit_completed_dates: Dict[str, Set[dt.date]] = {}
+        for log in logs:
+            ts = log.get("timestamp")
+            if not isinstance(ts, dt.datetime):
+                continue
+            msg_obj = log.get("message", "")
+            msg = str(msg_obj) if msg_obj is not None else ""
+            msg = msg.strip()
+            if msg:
+                if msg not in habit_completed_dates:
+                    habit_completed_dates[msg] = set()
+                habit_completed_dates[msg].add(ts.date())
+
         # Calculate completion rates
         print("=" * 50)
         print("Habit Completion Statistics")
-        if since_date:
+        if since_date and until_date:
+            print(
+                f"From: {since_date.strftime('%Y-%m-%d')} to {until_date.strftime('%Y-%m-%d')}"
+            )
+        elif since_date:
             print(f"Since: {since_date.strftime('%Y-%m-%d')}")
+        elif until_date:
+            print(f"Until: {until_date.strftime('%Y-%m-%d')}")
         else:
             print("All time")
         print("=" * 50)
 
+        # Print daily completion visualization for each habit
+        for habit in habits:
+            name_obj = habit.get("name", "")
+            freq_obj = habit.get("frequency", "")
+            created_at_obj = habit.get("created_at")
+            name = str(name_obj) if name_obj is not None else ""
+            freq = str(freq_obj) if freq_obj is not None else ""
+
+            # Determine date range
+            if since_date:
+                start_date = since_date
+            else:
+                if isinstance(created_at_obj, dt.datetime):
+                    start_date = created_at_obj.date()
+                else:
+                    start_date = dt.date.today() - dt.timedelta(days=30)
+
+            if until_date:
+                end_date = until_date
+            else:
+                end_date = dt.date.today()
+
+            # Get scheduled days for this habit
+            scheduled_days = _parse_frequency(freq)
+            completed_dates = habit_completed_dates.get(name, set())
+
+            # Build visualization string
+            visualization_parts: List[str] = []
+            current_date = start_date
+            while current_date <= end_date:
+                day_abbr = _get_day_abbr_for_date(current_date)
+                if day_abbr in scheduled_days:
+                    # Habit is scheduled for this day
+                    if current_date in completed_dates:
+                        visualization_parts.append("[█]")
+                    else:
+                        visualization_parts.append("[ ]")
+                else:
+                    # Habit is not scheduled for this day
+                    visualization_parts.append(".")
+                current_date += dt.timedelta(days=1)
+
+            # Print the visualization
+            if visualization_parts:
+                print(f"{name}: {''.join(visualization_parts)}")
+
+        print("=" * 50)
         # Count expected occurrences based on frequency
         for habit in habits:
             name_obj = habit.get("name", "")
@@ -269,7 +359,11 @@ def loop_run(args: argparse.Namespace) -> int:
                     # Fallback: assume habit was created 30 days ago
                     start_date = dt.date.today() - dt.timedelta(days=30)
 
-            end_date = dt.date.today()
+            if until_date:
+                end_date = until_date
+            else:
+                end_date = dt.date.today()
+
             expected = 0
             current_date = start_date
             while current_date <= end_date:

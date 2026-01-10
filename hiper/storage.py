@@ -518,6 +518,7 @@ def load_habits_csv() -> List[Dict[str, object]]:
                     created_at = dt.datetime.fromisoformat(created_at_str)
                 except ValueError:
                     # If parsing fails, use current time as fallback
+                    raise ValueError(f"Invalid created_at: {created_at_str}")
                     created_at = dt.datetime.now()
             else:
                 # For backward compatibility, use current time if missing

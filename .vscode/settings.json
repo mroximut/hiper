@@ -12,5 +12,6 @@
         "rewrap.wrappingColumn": 72,
         "rewrap.autoWrap.enabled": true
     },
+    // "python.languageServer": "None"
 }
 
