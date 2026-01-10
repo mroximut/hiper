@@ -15,6 +15,7 @@ DEFAULT_LANG = "en"
 DEFAULT_NICK = "(not set)"
 DEFAULT_WORK_PER_DAY = "8h"
 DEFAULT_PAUSE_LENGTH = "15m"
+DEFAULT_PAUSE_END_MSG = "Pause ended"
 
 
 def set_configure_parser(p: argparse.ArgumentParser) -> None:
@@ -47,6 +48,14 @@ def set_configure_parser(p: argparse.ArgumentParser) -> None:
         "--pause-length",
         help="Default pause duration (e.g., 15m, 1h30m, 45s). Default: 15m",
     )
+    p.add_argument(
+        "--pause-end-msg",
+        help="Message to announce when pause ends (default: 'Pause ended')",
+    )
+    p.add_argument(
+        "--pause-lang",
+        help="Language code for pause announcements (e.g., en, fr, de). Defaults to lang config.",
+    )
     p.add_argument("--show", action="store_true", help="Show current settings")
 
 
@@ -62,6 +71,10 @@ def set_run(args: argparse.Namespace) -> int:
         countdown = config.get_config("countdown", DEFAULT_COUNTDOWN)
         work_per_day = config.get_config("work_per_day", DEFAULT_WORK_PER_DAY)
         pause_length = config.get_config("pause_length", DEFAULT_PAUSE_LENGTH)
+        pause_end_msg = config.get_config("pause_end_msg", DEFAULT_PAUSE_END_MSG)
+        pause_lang = config.get_config("pause_lang", "")
+        if not pause_lang:
+            pause_lang = f"{lang} (from lang)"
 
         print("Current settings:")
         print(f"  lang: {lang}")
@@ -74,6 +87,8 @@ def set_run(args: argparse.Namespace) -> int:
         print(f"  countdown: {countdown}")
         print(f"  work_per_day: {work_per_day}")
         print(f"  pause_length: {pause_length}")
+        print(f"  pause_end_msg: {pause_end_msg}")
+        print(f"  pause_lang: {pause_lang}")
         return 0
 
     # Set values
@@ -171,13 +186,29 @@ def set_run(args: argparse.Namespace) -> int:
         config.set_config("pause_length", pause_length)
         updated.append(f"pause_length={pause_length}")
 
+    if args.pause_end_msg is not None:
+        pause_end_msg = args.pause_end_msg.strip()
+        if not pause_end_msg:
+            print("Error: pause-end-msg cannot be empty")
+            return 1
+        config.set_config("pause_end_msg", pause_end_msg)
+        updated.append(f"pause_end_msg={pause_end_msg}")
+
+    if args.pause_lang is not None:
+        pause_lang = args.pause_lang.strip().lower()
+        if not pause_lang:
+            print("Error: pause-lang cannot be empty")
+            return 1
+        config.set_config("pause_lang", pause_lang)
+        updated.append(f"pause_lang={pause_lang}")
+
     if updated:
         print(f"Updated: {', '.join(updated)}")
     else:
         print("No settings specified. Use --show to see current settings.")
         print(
             "Available options: --lang, --nick, --savedir, --clock, --bar-width, "
-            "--estimate-bar, --countdown, --work-per-day, --pause-length"
+            "--estimate-bar, --countdown, --work-per-day, --pause-length, --pause-end-msg, --pause-lang"
         )
 
     return 0

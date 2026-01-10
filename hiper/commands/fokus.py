@@ -3,10 +3,11 @@ import datetime as dt
 import os
 import select
 import shlex
+import subprocess
 import sys
 import termios
 import tty
-from typing import Optional
+from typing import Any, Optional, Tuple
 
 from .. import config, storage
 from .. import messages as msgs
@@ -64,16 +65,16 @@ def _read_key_nonblocking(timeout_s: float = 0.0) -> Optional[str]:
     return ch.decode(errors="ignore")
 
 
-def _set_raw_mode():
+def _set_raw_mode() -> Tuple[int, list[Any]]:
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     tty.setcbreak(fd)
     return fd, old_settings
 
 
-def _restore_mode(fd, old_settings):  # type: ignore
+def _restore_mode(fd: Optional[int], old_settings: Optional[list[Any]]) -> None:
     if fd is not None and old_settings is not None:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)  # type: ignore
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 def _print_header(start_time: dt.datetime):
@@ -245,6 +246,11 @@ def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
         help="Target duration for this session (e.g., 60m, 1h30m). Overrides --clock config.",
         default=None,
     )
+    p.add_argument(
+        "--strict",
+        action="store_true",
+        help="In strict mode, pressing space asks for pause duration and runs 'hiper pause'",
+    )
 
 
 def fokus_run(args: argparse.Namespace) -> int:
@@ -298,6 +304,8 @@ def fokus_run(args: argparse.Namespace) -> int:
     accumulated = 0  # seconds accumulated before current running span
     run_started = dt.datetime.now()  # timestamp when the current running span began
     pause_started: Optional[dt.datetime] = None
+    fd: Optional[int]
+    old: Optional[list[Any]]
     fd, old = _set_raw_mode()
 
     # Track if this is the first render (for estimate bar positioning)
@@ -348,13 +356,122 @@ def fokus_run(args: argparse.Namespace) -> int:
                 if key == " ":
                     # accumulate time up to this pause moment
                     accumulated += int((now - run_started).total_seconds())
-                    paused = True
-                    pause_started = now
-                    _finalize_render()
-                    _restore_mode(fd, old)
-                    fd, old = None, None
-                    print(msgs.paused_line(current_time=now, elapsed_seconds=elapsed))
-                    continue
+
+                    # In strict mode, ask for duration and run hiper pause
+                    if args.strict:
+                        _finalize_render()
+                        _restore_mode(fd, old)
+                        fd, old = None, None
+
+                        # Print paused message (same as normal mode)
+                        print(
+                            msgs.paused_line(current_time=now, elapsed_seconds=elapsed)
+                        )
+
+                        # Ask user for pause duration
+                        sys.stdout.write("Pause for: ")
+                        sys.stdout.flush()
+                        duration_input = sys.stdin.readline().strip()
+
+                        if not duration_input:
+                            # User pressed Enter without input, fall back to normal pause mode
+                            # Clear the prompt line
+                            print("\033[1A\033[K", end="", flush=True)
+                            paused = True
+                            pause_started = now
+                            # Continue to the normal pause command handling loop
+                            continue
+
+                        # Validate duration format
+                        try:
+                            storage.parse_duration(duration_input)
+                        except ValueError as e:
+                            print(f"Error: invalid duration '{duration_input}': {e}")
+                            # Resume fokus after invalid input
+                            resume_now = dt.datetime.now()
+                            pause_dur_s = int((resume_now - now).total_seconds())
+                            print(
+                                msgs.resuming_line(
+                                    _format_duration(pause_dur_s), resume_now
+                                )
+                            )
+                            fd, old = _set_raw_mode()
+                            paused = False
+                            run_started = resume_now
+                            pause_started = None
+                            last_whole = -1
+                            is_first_render = True
+                            _tick_render(
+                                elapsed,
+                                goal_override,
+                                args.title,
+                                is_first_render,
+                                estimate_seconds,
+                                time_worked_before,
+                            )
+                            is_first_render = False
+                            continue
+
+                        # Record pause start time
+                        pause_start_time = dt.datetime.now()
+
+                        # Run hiper pause --duration DURATION
+                        try:
+                            # Use python -m hiper to run the pause command
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    "-m",
+                                    "hiper",
+                                    "pause",
+                                    "--duration",
+                                    duration_input,
+                                ],
+                                check=False,
+                            )
+                        except KeyboardInterrupt:
+                            # If pause is interrupted by Ctrl+C, just resume fokus
+                            pass
+                        except Exception as e:
+                            print(f"Error running pause command: {e}")
+
+                        # After pause (whether completed or interrupted), resume fokus
+                        resume_now = dt.datetime.now()
+                        pause_dur_s = int(
+                            (resume_now - pause_start_time).total_seconds()
+                        )
+                        print(
+                            msgs.resuming_line(
+                                _format_duration(pause_dur_s), resume_now
+                            )
+                        )
+                        fd, old = _set_raw_mode()
+                        paused = False
+                        run_started = resume_now
+                        pause_started = None
+                        last_whole = -1
+                        is_first_render = True
+                        _tick_render(
+                            elapsed,
+                            goal_override,
+                            args.title,
+                            is_first_render,
+                            estimate_seconds,
+                            time_worked_before,
+                        )
+                        is_first_render = False
+                        continue
+                    else:
+                        # Normal pause mode (non-strict)
+                        paused = True
+                        pause_started = now
+                        _finalize_render()
+                        _restore_mode(fd, old)
+                        fd, old = None, None
+                        print(
+                            msgs.paused_line(current_time=now, elapsed_seconds=elapsed)
+                        )
+                        continue
                 else:
                     continue
             else:
@@ -432,7 +549,7 @@ def get_command() -> Command:
         help="Start a focus session.",
         description="Start a focus session. Press Space to pause. When paused"
         " press Enter to resume, or type 'save (--title TITLE)' to save the session, "
-        " or 'discard' to discard the session.",
+        " or 'discard' to discard the session. Use --strict to require pause duration when pausing.",
         configure_parser=fokus_configure_parser,
         run=fokus_run,
     )
