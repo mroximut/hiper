@@ -1,12 +1,18 @@
 import argparse
 import datetime as dt
+import os
+import random
 import subprocess
 import sys
 import time
 
 from .. import config, storage
 from . import Command
-from .set import DEFAULT_COUNTDOWN, DEFAULT_PAUSE_END_MSG, DEFAULT_PAUSE_LENGTH
+from .set import (
+    DEFAULT_COUNTDOWN,
+    DEFAULT_PAUSE_END_MUSIC,
+    DEFAULT_PAUSE_LENGTH,
+)
 
 
 def pause_configure_parser(p: argparse.ArgumentParser) -> None:
@@ -15,6 +21,17 @@ def pause_configure_parser(p: argparse.ArgumentParser) -> None:
         "-d",
         help="Duration of the pause (e.g., 15m, 1h30m, 45s). "
         f"Defaults to pause_length config (default: {DEFAULT_PAUSE_LENGTH})",
+    )
+    p.add_argument(
+        "--music",
+        "-m",
+        help="Music file or folder to play when pause ends (overrides pause_end_music config). "
+        "Can be absolute path, or relative to data directory. If folder, plays random file.",
+    )
+    p.add_argument(
+        "--no-music",
+        action="store_true",
+        help="Disable music for this pause session (overrides pause_end_music config).",
     )
 
 
@@ -76,41 +93,93 @@ def pause_run(args: argparse.Namespace) -> int:
     print(f"Ended at: {end_time.strftime('%H:%M:%S')}")
     print(f"Duration: {formatted_duration}")
 
-    # Use speech dispatcher for text-to-speech announcement
+    # Get pause end configuration
+    # --no-music takes priority, then --music, then config
+    if args.no_music:
+        pause_end_music = ""
+    else:
+        pause_end_music = (
+            args.music
+            if args.music
+            else config.get_config("pause_end_music", DEFAULT_PAUSE_END_MUSIC)
+        )
+
+    # Check if music is configured
+    use_music = pause_end_music and pause_end_music.strip()
+
+    if not use_music:
+        # No alarm configured
+        print("---------------------------------")
+        return 0
+
     print("Press Ctrl+C to stop the alarm...")
 
-    for _ in range(10):
-        # # Check if Enter was pressed (non-blocking)
-        # if select.select([sys.stdin], [], [], 0)[0]:
-        #     line = sys.stdin.readline()
-        #     if line.strip() == "" or line.strip() == "\n":
-        #         break
+    if use_music:
+        # Resolve music path: if absolute, use as-is; if relative, join with data dir
+        data_dir = storage.get_data_dir()
+        music_input = pause_end_music.strip()
+        if os.path.isabs(music_input):
+            music_path = music_input
+        else:
+            music_path = os.path.join(data_dir, music_input)
 
-        # Try to announce the pause end message
-        pause_end_msg = config.get_config("pause_end_msg", DEFAULT_PAUSE_END_MSG)
-        # Get language for speech (use pause_lang if set, otherwise fall back to lang)
-        pause_lang = config.get_config("pause_lang", "")
-        if not pause_lang:
-            pause_lang = config.get_config("lang", "en")
+        if not os.path.exists(music_path):
+            print(
+                f"Error: music file or folder not found: {music_path}", file=sys.stderr
+            )  # type: ignore[arg-type]
+            print("---------------------------------")
+            return 0
+
+        # If it's a directory, pick a random file from it
+        if os.path.isdir(music_path):
+            # Get all files in the directory
+            files = [
+                f
+                for f in os.listdir(music_path)
+                if os.path.isfile(os.path.join(music_path, f))
+            ]
+            if not files:
+                print(
+                    f"Error: no files found in directory: {music_path}", file=sys.stderr
+                )  # type: ignore[arg-type]
+                print("---------------------------------")
+                return 0
+            # Pick a random file
+            selected_file = random.choice(files)
+            music_path = os.path.join(music_path, selected_file)
+        # If it's a file, use it directly
+
+        # Check if VLC is available
+        try:
+            subprocess.run(
+                ["vlc", "--version"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=1,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            print(
+                "Error: VLC not found. Please install VLC media player.",
+                file=sys.stderr,
+            )  # type: ignore[arg-type]
+            print("---------------------------------")
+            return 0
 
         try:
-            # Use -l flag to set language for spd-say
-            cmd = ["spd-say", "-l", pause_lang, pause_end_msg]
+            # Play music once with VLC until file ends or user interrupts
             subprocess.run(
-                cmd,
+                ["vlc", "--intf", "dummy", "--play-and-exit", music_path],
                 check=False,
-                timeout=2,
+                timeout=None,  # Let it play fully
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            time.sleep(5)
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            print("Error: speech dispatcher not found", file=sys.stderr)  # type: ignore[arg-type]
-            break
         except KeyboardInterrupt:
             # Clear the line to hide ^C
             print("\r\033[K", end="", flush=True)
-            break
+        except Exception as e:
+            print(f"Error playing music: {e}", file=sys.stderr)  # type: ignore[arg-type]
 
     print("---------------------------------")
     return 0

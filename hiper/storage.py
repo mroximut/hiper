@@ -97,8 +97,8 @@ def parse_duration(s: str) -> int:
     if num:
         # trailing number with no unit -> minutes
         total += int(num) * 60
-    if total <= 0:
-        raise ValueError("duration must be > 0")
+    if total < 0:
+        raise ValueError("duration must be >= 0")
     return total
 
 

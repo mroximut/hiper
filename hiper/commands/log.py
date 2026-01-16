@@ -30,6 +30,10 @@ def log_configure_parser(p: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Show all logs (no date filtering)",
     )
+    p.add_argument(
+        "--at",
+        help="Specify date/time for the log entry (ISO datetime, YYYY-MM-DD, YYYY-MM-DD HH:MM, or 'yesterday')",
+    )
 
 
 def _format_timestamp(ts: dt.datetime) -> str:
@@ -66,6 +70,49 @@ def _parse_datetime(date_str: str, is_until: bool = False) -> dt.datetime:
     raise ValueError(
         f"Invalid date/time format '{date_str}'. "
         "Use ISO datetime (e.g., 2024-01-15T10:30:00) or date (YYYY-MM-DD)"
+    )
+
+
+def _parse_at_datetime(at_str: str) -> dt.datetime:
+    """Parse the --at date/time string.
+
+    Supports:
+    - ISO datetime format (e.g., 2024-01-15T10:30:00)
+    - Date format YYYY-MM-DD (uses current time)
+    - Date and time format YYYY-MM-DD HH:MM
+    - Special case: "yesterday" (same time as now, but yesterday)
+    """
+    at_str = at_str.strip().lower()
+
+    # Handle "yesterday" special case
+    if at_str == "yesterday":
+        now = dt.datetime.now()
+        return now - dt.timedelta(days=1)
+
+    # Try ISO datetime format first
+    try:
+        return dt.datetime.fromisoformat(at_str)
+    except ValueError:
+        pass
+
+    # Try date and time format (YYYY-MM-DD HH:MM)
+    try:
+        return dt.datetime.strptime(at_str, "%Y-%m-%d %H:%M")
+    except ValueError:
+        pass
+
+    # Try date format (YYYY-MM-DD) - use current time
+    try:
+        date_obj = dt.datetime.strptime(at_str, "%Y-%m-%d").date()
+        now = dt.datetime.now()
+        return dt.datetime.combine(date_obj, now.time())
+    except ValueError:
+        pass
+
+    raise ValueError(
+        f"Invalid --at date/time format '{at_str}'. "
+        "Use ISO datetime (e.g., 2024-01-15T10:30:00), "
+        "YYYY-MM-DD, YYYY-MM-DD HH:MM, or 'yesterday'"
     )
 
 
@@ -210,8 +257,18 @@ def log_run(args: argparse.Namespace) -> int:
         # No message and no filters: show today's logs
         return _print_logs_today()
 
-    # Append message and then show today's logs
-    storage.append_log_csv(message, dt.datetime.now())
+    # Determine timestamp for the log entry
+    if args.at:
+        try:
+            timestamp = _parse_at_datetime(args.at)
+        except ValueError as e:
+            print(f"Error: {e}")
+            return 1
+    else:
+        timestamp = dt.datetime.now()
+
+    # Append message with specified timestamp and then show today's logs
+    storage.append_log_csv(message, timestamp)
     return _print_logs_today()
 
 
@@ -220,7 +277,8 @@ def get_command() -> Command:
         name="log",
         help="Append a message or view recent logs.",
         description="Append a message with the current timestamp to log.csv, "
-        "or list log entries. Use --all to show all logs, --last for recent duration (e.g. 5m, 1h), "
+        "or list log entries. Use --at to specify a date/time for the entry. "
+        "Use --all to show all logs, --last for recent duration (e.g. 5m, 1h), "
         "or --since/--until to filter by date range (ISO datetime or YYYY-MM-DD).",
         configure_parser=log_configure_parser,
         run=log_run,
