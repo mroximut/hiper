@@ -61,6 +61,27 @@ def _is_habit_scheduled_today(frequency: str) -> bool:
     return today_abbr in scheduled_days
 
 
+def _check_habit_match(log_message: str, habit_name: str) -> Optional[str]:
+    """Check if a log message matches a habit."""
+    log_message = log_message.strip()
+    habit_name = habit_name.strip()
+
+    # Exact match
+    if log_message == habit_name:
+        return ""
+
+    # Parametric match: habit_name:param
+    if log_message.startswith(habit_name + ":"):
+        param = log_message[len(habit_name) + 1 :].strip()
+        # Extract only the first word after the colon
+        if param:
+            # Get the first word (split by space and take first part)
+            first_word = param.split()[0] if param else ""
+            return first_word if first_word else None
+
+    return None
+
+
 def loop_configure_parser(p: argparse.ArgumentParser) -> None:
     subparsers = p.add_subparsers(dest="loop_subcommand", help="loop subcommands")
 
@@ -169,7 +190,13 @@ def loop_run(args: argparse.Namespace) -> int:
         for habit in today_habits:
             habit_name_obj = habit.get("name", "")
             habit_name = str(habit_name_obj) if habit_name_obj is not None else ""
-            if habit_name in today_logs:
+            # Check if any log message matches this habit (exact or parametric)
+            is_done = False
+            for log_msg in today_logs:
+                if _check_habit_match(log_msg, habit_name) is not None:
+                    is_done = True
+                    break
+            if is_done:
                 done_habits.append(habit)
             else:
                 not_done_habits.append(habit)
@@ -249,19 +276,9 @@ def loop_run(args: argparse.Namespace) -> int:
                 filtered_logs.append(log)
             logs = filtered_logs
 
-        # Count occurrences of each habit name in logs
-        habit_counts: Dict[str, int] = {}
-        for log in logs:
-            msg_obj = log.get("message", "")
-            msg = str(msg_obj) if msg_obj is not None else ""
-            msg = msg.strip()
-            if msg in habit_counts:
-                habit_counts[msg] += 1
-            else:
-                habit_counts[msg] = 1
-
         # Build a map of completed dates for each habit
-        habit_completed_dates: Dict[str, Set[dt.date]] = {}
+        # For parametric habits, store the parameter value for each date
+        habit_completed_dates: Dict[str, Dict[dt.date, Optional[str]]] = {}
         for log in logs:
             ts = log.get("timestamp")
             if not isinstance(ts, dt.datetime):
@@ -270,9 +287,26 @@ def loop_run(args: argparse.Namespace) -> int:
             msg = str(msg_obj) if msg_obj is not None else ""
             msg = msg.strip()
             if msg:
-                if msg not in habit_completed_dates:
-                    habit_completed_dates[msg] = set()
-                habit_completed_dates[msg].add(ts.date())
+                # Check if this log message matches any habit
+                for habit in habits:
+                    habit_name_obj = habit.get("name", "")
+                    habit_name = (
+                        str(habit_name_obj) if habit_name_obj is not None else ""
+                    )
+                    param = _check_habit_match(msg, habit_name)
+                    if param is not None:
+                        if habit_name not in habit_completed_dates:
+                            habit_completed_dates[habit_name] = {}
+                        # Store the parameter value (empty string for non-parametric, actual value for parametric)
+                        habit_completed_dates[habit_name][ts.date()] = (
+                            param if param else None
+                        )
+                        break
+
+        # Count occurrences of each habit (by unique dates completed)
+        habit_counts: Dict[str, int] = {}
+        for habit_name, completed_dates_dict in habit_completed_dates.items():
+            habit_counts[habit_name] = len(completed_dates_dict)
 
         # Calculate completion rates
         print("=" * 50)
@@ -313,7 +347,7 @@ def loop_run(args: argparse.Namespace) -> int:
 
             # Get scheduled days for this habit
             scheduled_days = _parse_frequency(freq)
-            completed_dates = habit_completed_dates.get(name, set())
+            completed_dates_dict = habit_completed_dates.get(name, {})
 
             # Build visualization string
             visualization_parts: List[str] = []
@@ -322,8 +356,14 @@ def loop_run(args: argparse.Namespace) -> int:
                 day_abbr = _get_day_abbr_for_date(current_date)
                 if day_abbr in scheduled_days:
                     # Habit is scheduled for this day
-                    if current_date in completed_dates:
-                        visualization_parts.append("[█]")
+                    if current_date in completed_dates_dict:
+                        param_value = completed_dates_dict[current_date]
+                        if param_value:
+                            # Parametric habit: display the parameter value
+                            visualization_parts.append(f"[{param_value}]")
+                        else:
+                            # Non-parametric habit: display square
+                            visualization_parts.append("[█]")
                     else:
                         visualization_parts.append("[ ]")
                 else:
@@ -420,7 +460,13 @@ def loop_run(args: argparse.Namespace) -> int:
             for habit in scheduled_today:
                 habit_name_obj = habit.get("name", "")
                 habit_name = str(habit_name_obj) if habit_name_obj is not None else ""
-                if habit_name in today_messages:
+                # Check if any log message matches this habit (exact or parametric)
+                is_completed = False
+                for log_msg in today_messages:
+                    if _check_habit_match(log_msg, habit_name) is not None:
+                        is_completed = True
+                        break
+                if is_completed:
                     completed.append(habit)
                 else:
                     pending.append(habit)
