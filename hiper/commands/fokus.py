@@ -383,7 +383,11 @@ def fokus_run(args: argparse.Namespace) -> int:
         today_time_before = storage.get_time_worked_today()
 
     # Online: nickname, status line from other users, and write "fokus:" to our file
-    nick = config.get_config("nick", "(not set)").strip() if getattr(args, "online", False) else ""
+    nick = (
+        config.get_config("nick", "(not set)").strip()
+        if getattr(args, "online", False)
+        else ""
+    )
     online_status_line: Optional[str] = None
     wrote_online_fokus = False
     if getattr(args, "online", False) and nick:
@@ -567,6 +571,10 @@ def fokus_run(args: argparse.Namespace) -> int:
                         run_started = resume_now
                         pause_started = None
                         last_whole = -1
+                        if getattr(args, "online", False) and nick:
+                            storage.append_online_fokus_line(
+                                nick, f"fokus: {args.title or ''}".rstrip()
+                            )
                         is_first_render = True
                         _tick_render(
                             elapsed,
@@ -669,6 +677,10 @@ def fokus_run(args: argparse.Namespace) -> int:
                     run_started = resume_now
                     pause_started = None
                     last_whole = -1
+                    if getattr(args, "online", False) and nick:
+                        storage.append_online_fokus_line(
+                            nick, f"fokus: {args.title or ''}".rstrip()
+                        )
                     is_first_render = True
                     _tick_render(
                         elapsed,

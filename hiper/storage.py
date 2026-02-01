@@ -577,6 +577,7 @@ def save_habits_csv(habits: List[Dict[str, object]]) -> str:
 
 # --- Online fokus (data_dir/online/NICKNAME.txt) ---
 
+
 def get_online_dir() -> str:
     """Return data_dir/online, creating it if needed."""
     data_dir = get_data_dir()
