@@ -297,7 +297,8 @@ def loop_run(args: argparse.Namespace) -> int:
                     if param is not None:
                         if habit_name not in habit_completed_dates:
                             habit_completed_dates[habit_name] = {}
-                        # Store the parameter value (empty string for non-parametric, actual value for parametric)
+                        # Store the parameter value (empty string for non-parametric,
+                        # actual value for parametric)
                         habit_completed_dates[habit_name][ts.date()] = (
                             param if param else None
                         )

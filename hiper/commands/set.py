@@ -16,6 +16,7 @@ DEFAULT_NICK = "(not set)"
 DEFAULT_WORK_PER_DAY = "8h"
 DEFAULT_PAUSE_LENGTH = "15m"
 DEFAULT_PAUSE_END_MUSIC = ""
+DEFAULT_TODAY_TIME = "false"
 
 
 def set_configure_parser(p: argparse.ArgumentParser) -> None:
@@ -52,6 +53,10 @@ def set_configure_parser(p: argparse.ArgumentParser) -> None:
         "--pause-end-music",
         help="MP3 file or folder to play when pause ends. Can be absolute path, or relative to data directory. If folder, plays random file.",
     )
+    p.add_argument(
+        "--today-time",
+        help="Show total fokus time today in fokus sessions (true/false)",
+    )
     p.add_argument("--show", action="store_true", help="Show current settings")
 
 
@@ -68,6 +73,7 @@ def set_run(args: argparse.Namespace) -> int:
         work_per_day = config.get_config("work_per_day", DEFAULT_WORK_PER_DAY)
         pause_length = config.get_config("pause_length", DEFAULT_PAUSE_LENGTH)
         pause_end_music = config.get_config("pause_end_music", DEFAULT_PAUSE_END_MUSIC)
+        today_time = config.get_config("today_time", DEFAULT_TODAY_TIME)
 
         print("Current settings:")
         print(f"  lang: {lang}")
@@ -83,6 +89,7 @@ def set_run(args: argparse.Namespace) -> int:
         print(
             f"  pause_end_music: {pause_end_music if pause_end_music else '(not set)'}"
         )
+        print(f"  today_time: {today_time}")
         return 0
 
     # Set values
@@ -206,13 +213,21 @@ def set_run(args: argparse.Namespace) -> int:
             f"pause_end_music={pause_end_music if pause_end_music else '(empty)'}"
         )
 
+    if args.today_time is not None:
+        today_time = args.today_time.strip().lower()
+        if today_time not in ("true", "false"):
+            print(f"Error: today_time must be 'true' or 'false': {today_time}")
+            return 1
+        config.set_config("today_time", today_time)
+        updated.append(f"today_time={today_time}")
+
     if updated:
         print(f"Updated: {', '.join(updated)}")
     else:
         print("No settings specified. Use --show to see current settings.")
         print(
             "Available options: --lang, --nick, --savedir, --clock, --bar-width, "
-            "--estimate-bar, --countdown, --work-per-day, --pause-length, --pause-end-music"
+            "--estimate-bar, --countdown, --work-per-day, --pause-length, --pause-end-music, --today-time"
         )
 
     return 0

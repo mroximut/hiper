@@ -372,6 +372,29 @@ def get_time_worked_for_title(
     return total
 
 
+def get_time_worked_today() -> int:
+    """Get total time worked today from sessions.csv."""
+    rows = load_sessions_csv()
+    total = 0
+    today = dt.date.today()
+    for row in rows:
+        start = row.get("start")
+        if not isinstance(start, dt.datetime):
+            continue
+        if start.date() != today:
+            continue
+
+        duration = row.get("duration", 0)
+        if isinstance(duration, int):
+            total += duration
+        elif isinstance(duration, str):
+            try:
+                total += int(duration)
+            except (ValueError, TypeError):
+                pass
+    return total
+
+
 def _ensure_read_csv_header(path: str) -> None:
     if not os.path.exists(path) or os.path.getsize(path) == 0:
         with open(path, "w", newline="", encoding="utf-8") as f:

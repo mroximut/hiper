@@ -18,6 +18,7 @@ from .set import (
     DEFAULT_CLOCK_LENGTH,
     DEFAULT_COUNTDOWN,
     DEFAULT_ESTIMATE_BAR,
+    DEFAULT_TODAY_TIME,
 )
 
 
@@ -88,6 +89,8 @@ def _tick_render(
     is_first_render: bool = False,
     estimate_seconds: Optional[int] = None,
     time_worked_before: Optional[int] = None,
+    context_time_before: Optional[int] = None,
+    today_time_before: Optional[int] = None,
 ):
     clock = config.get_config("clock", DEFAULT_CLOCK)
     if goal_override:
@@ -185,21 +188,37 @@ def _tick_render(
         timer = _format_duration(elapsed_s)
         line = f":>{timer}"
 
-    # Render both lines if estimate bar is shown
+    # Build context line if context_time_before is provided
+    context_line = None
+    if context_time_before is not None:
+        total_context_time = context_time_before + elapsed_s
+        context_line = f":>Total fokus towards {session_title}: {_format_duration(total_context_time)}"
+
+    # Build today time line if today_time_before is provided
+    today_line = None
+    if today_time_before is not None:
+        total_today_time = today_time_before + elapsed_s
+        today_line = f":>Total fokus today: {_format_duration(total_today_time)}"
+
+    # Count how many lines we need to render
+    lines_to_render = [line]
     if estimate_line:
-        if is_first_render:
-            # First render: print both lines normally
-            print(f"{line}\n{estimate_line}\n", end="", flush=True)
-        else:
-            # Subsequent renders: move cursor up 2 lines and update both
-            # Move up 2 lines, clear both lines, then print
-            print(f"\033[2A\r{line}\033[K\n{estimate_line}\033[K\n", end="", flush=True)
+        lines_to_render.append(estimate_line)
+    if context_line:
+        lines_to_render.append(context_line)
+    if today_line:
+        lines_to_render.append(today_line)
+
+    num_lines = len(lines_to_render)
+    output = "\n".join(lines_to_render) + "\n"
+
+    if is_first_render:
+        print(output, end="", flush=True)
     else:
-        # No estimate bar: just render normal clock
-        if is_first_render:
-            print(f"{line}\n", end="", flush=True)
-        else:
-            print(f"\033[1A\r{line}\033[K\n", end="", flush=True)
+        # Move cursor up num_lines lines and rewrite
+        print(f"\033[{num_lines}A\r", end="", flush=True)
+        for render_line in lines_to_render:
+            print(f"{render_line}\033[K\n", end="", flush=True)
 
 
 def _finalize_render() -> None:
@@ -233,6 +252,40 @@ def _parse_save_command(cmd_line: str) -> tuple[bool, Optional[str]]:
     return True, title
 
 
+def _parse_goal_command(cmd_line: str) -> tuple[bool, Optional[str], Optional[str]]:
+    """Parse a goal command like 'goal 5h' or 'goal 1h30m'.
+
+    Returns:
+        (is_goal_command, duration, error_message)
+    """
+    cmd_line = cmd_line.strip()
+    if not cmd_line.lower().startswith("goal"):
+        return False, None, None
+
+    # Try to parse with shlex to handle quoted strings properly
+    try:
+        parts = shlex.split(cmd_line)
+    except ValueError:
+        # Fallback to simple split if shlex fails
+        parts = cmd_line.split()
+
+    if len(parts) == 1 and parts[0].lower() == "goal":
+        return True, None, "Usage: goal DURATION (e.g., goal 5h)"
+
+    if len(parts) != 2:
+        return True, None, "Usage: goal DURATION (e.g., goal 5h)"
+
+    duration = parts[1]
+
+    # Validate the duration format
+    try:
+        storage.parse_duration(duration)
+    except ValueError as e:
+        return True, None, f"Invalid duration '{duration}': {e}"
+
+    return True, duration, None
+
+
 def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--title",
@@ -250,6 +303,12 @@ def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
         "--strict",
         action="store_true",
         help="In strict mode, pressing space asks for pause duration and runs 'hiper pause'",
+    )
+    p.add_argument(
+        "--context",
+        "-c",
+        action="store_true",
+        help="Show cumulative time focused on this title across all sessions (requires --title)",
     )
 
 
@@ -299,6 +358,22 @@ def fokus_run(args: argparse.Namespace) -> int:
             # If loading goals fails, just continue without estimate bar
             print(f"Error: failed to load goals: {e}")
 
+    # Load context time if --context is enabled and title is provided
+    context_time_before: Optional[int] = None
+    if args.context:
+        if not args.title:
+            print("Error: --context requires --title")
+            return 1
+        context_time_before = storage.get_time_worked_for_title(args.title)
+
+    # Load today's time if today_time config is enabled
+    today_time_before: Optional[int] = None
+    today_time_enabled = (
+        config.get_config("today_time", DEFAULT_TODAY_TIME).lower() == "true"
+    )
+    if today_time_enabled:
+        today_time_before = storage.get_time_worked_today()
+
     # Running: detect space with raw mode; Paused: line input for commands
     paused = False
     accumulated = 0  # seconds accumulated before current running span
@@ -319,6 +394,8 @@ def fokus_run(args: argparse.Namespace) -> int:
         is_first_render,
         estimate_seconds,
         time_worked_before,
+        context_time_before,
+        today_time_before,
     )
     is_first_render = False
 
@@ -341,6 +418,8 @@ def fokus_run(args: argparse.Namespace) -> int:
                         is_first_render,
                         estimate_seconds,
                         time_worked_before,
+                        context_time_before,
+                        today_time_before,
                     )
                     is_first_render = False
                     last_whole = elapsed
@@ -408,6 +487,8 @@ def fokus_run(args: argparse.Namespace) -> int:
                                 is_first_render,
                                 estimate_seconds,
                                 time_worked_before,
+                                context_time_before,
+                                today_time_before,
                             )
                             is_first_render = False
                             continue
@@ -458,6 +539,8 @@ def fokus_run(args: argparse.Namespace) -> int:
                             is_first_render,
                             estimate_seconds,
                             time_worked_before,
+                            context_time_before,
+                            today_time_before,
                         )
                         is_first_render = False
                         continue
@@ -494,6 +577,35 @@ def fokus_run(args: argparse.Namespace) -> int:
                     )
                     _handle_save(save_title, start, now, elapsed)
                     break
+
+                # Handle goal command (e.g., 'goal 5h')
+                is_goal, new_duration, goal_error = _parse_goal_command(cmd)
+                if is_goal:
+                    if goal_error:
+                        print(goal_error)
+                        print(
+                            msgs.paused_line(current_time=now, elapsed_seconds=elapsed)
+                        )
+                        continue
+                    # Update the goal override
+                    goal_override = new_duration
+                    print(f"Goal updated to {new_duration}")
+                    print(msgs.paused_line(current_time=now, elapsed_seconds=elapsed))
+                    continue
+
+                # Handle help command
+                if cmd in ("help", "h", "?"):
+                    print("Available commands while paused:")
+                    print("  (enter), r, resume, continue  - Resume the session")
+                    print("  s, save, save --title TITLE   - Save and end the session")
+                    print(
+                        "  goal DURATION                 - Change session goal (e.g., goal 5h)"
+                    )
+                    print("  d, discard, cancel            - Discard the session")
+                    print("  h, help, ?                    - Show this help")
+                    print(msgs.paused_line(current_time=now, elapsed_seconds=elapsed))
+                    continue
+
                 if cmd in ("cancel", "discard", "d"):
                     _finalize_render()
                     print(msgs.cancelled_line())
@@ -520,6 +632,8 @@ def fokus_run(args: argparse.Namespace) -> int:
                         is_first_render,
                         estimate_seconds,
                         time_worked_before,
+                        context_time_before,
+                        today_time_before,
                     )
                     is_first_render = False
                     continue
@@ -549,6 +663,7 @@ def get_command() -> Command:
         help="Start a focus session.",
         description="Start a focus session. Press Space to pause. When paused"
         " press Enter to resume, or type 'save (--title TITLE)' to save the session, "
+        " 'goal DURATION' to change the session goal (e.g., goal 5h), "
         " or 'discard' to discard the session. Use --strict to require pause duration when pausing.",
         configure_parser=fokus_configure_parser,
         run=fokus_run,
