@@ -91,6 +91,7 @@ def _tick_render(
     time_worked_before: Optional[int] = None,
     context_time_before: Optional[int] = None,
     today_time_before: Optional[int] = None,
+    online_status_line: Optional[str] = None,
 ):
     clock = config.get_config("clock", DEFAULT_CLOCK)
     if goal_override:
@@ -208,6 +209,8 @@ def _tick_render(
         lines_to_render.append(context_line)
     if today_line:
         lines_to_render.append(today_line)
+    if online_status_line:
+        lines_to_render.append(online_status_line)
 
     num_lines = len(lines_to_render)
     output = "\n".join(lines_to_render) + "\n"
@@ -310,6 +313,11 @@ def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Show cumulative time focused on this title across all sessions (requires --title)",
     )
+    p.add_argument(
+        "--online",
+        action="store_true",
+        help="Write fokus status to data_dir/online/NICKNAME.txt and show other users' status below timers",
+    )
 
 
 def fokus_run(args: argparse.Namespace) -> int:
@@ -374,6 +382,29 @@ def fokus_run(args: argparse.Namespace) -> int:
     if today_time_enabled:
         today_time_before = storage.get_time_worked_today()
 
+    # Online: nickname, status line from other users, and write "fokus:" to our file
+    nick = config.get_config("nick", "(not set)").strip() if getattr(args, "online", False) else ""
+    online_status_line: Optional[str] = None
+    wrote_online_fokus = False
+    if getattr(args, "online", False) and nick:
+        other = storage.get_other_online_fokus_status(nick)
+        if other:
+            other_nick, other_title, is_active = other
+            if is_active:
+                online_status_line = (
+                    f":>{other_nick} is fokusing on {other_title} right now"
+                    if other_title
+                    else f":>{other_nick} is fokusing right now"
+                )
+            else:
+                online_status_line = (
+                    f":>{other_nick} has fokused on {other_title} last time"
+                    if other_title
+                    else f":>{other_nick} has fokused last time"
+                )
+        storage.append_online_fokus_line(nick, f"fokus: {args.title or ''}".rstrip())
+        wrote_online_fokus = True
+
     # Running: detect space with raw mode; Paused: line input for commands
     paused = False
     accumulated = 0  # seconds accumulated before current running span
@@ -396,6 +427,7 @@ def fokus_run(args: argparse.Namespace) -> int:
         time_worked_before,
         context_time_before,
         today_time_before,
+        online_status_line,
     )
     is_first_render = False
 
@@ -420,6 +452,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                         time_worked_before,
                         context_time_before,
                         today_time_before,
+                        online_status_line,
                     )
                     is_first_render = False
                     last_whole = elapsed
@@ -446,6 +479,8 @@ def fokus_run(args: argparse.Namespace) -> int:
                         print(
                             msgs.paused_line(current_time=now, elapsed_seconds=elapsed)
                         )
+                        if getattr(args, "online", False) and nick:
+                            storage.append_online_fokus_line(nick, "pause")
 
                         # Ask user for pause duration
                         sys.stdout.write("Pause for: ")
@@ -489,6 +524,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                                 time_worked_before,
                                 context_time_before,
                                 today_time_before,
+                                online_status_line,
                             )
                             is_first_render = False
                             continue
@@ -541,6 +577,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                             time_worked_before,
                             context_time_before,
                             today_time_before,
+                            online_status_line,
                         )
                         is_first_render = False
                         continue
@@ -548,6 +585,8 @@ def fokus_run(args: argparse.Namespace) -> int:
                         # Normal pause mode (non-strict)
                         paused = True
                         pause_started = now
+                        if getattr(args, "online", False) and nick:
+                            storage.append_online_fokus_line(nick, "pause")
                         _finalize_render()
                         _restore_mode(fd, old)
                         fd, old = None, None
@@ -566,11 +605,15 @@ def fokus_run(args: argparse.Namespace) -> int:
 
                 # Handle save command (both 's' shortcut and 'save' with optional --title)
                 if cmd == "s":
+                    if getattr(args, "online", False) and nick and wrote_online_fokus:
+                        storage.append_online_fokus_line(nick, "end")
                     _handle_save(args.title, start, now, elapsed)
                     break
 
                 is_save, title_override = _parse_save_command(cmd)
                 if is_save:
+                    if getattr(args, "online", False) and nick and wrote_online_fokus:
+                        storage.append_online_fokus_line(nick, "end")
                     # Use title from command if provided, otherwise use args.title
                     save_title = (
                         title_override if title_override is not None else args.title
@@ -607,6 +650,8 @@ def fokus_run(args: argparse.Namespace) -> int:
                     continue
 
                 if cmd in ("cancel", "discard", "d"):
+                    if getattr(args, "online", False) and nick and wrote_online_fokus:
+                        storage.append_online_fokus_line(nick, "end")
                     _finalize_render()
                     print(msgs.cancelled_line())
                     break
@@ -634,6 +679,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                         time_worked_before,
                         context_time_before,
                         today_time_before,
+                        online_status_line,
                     )
                     is_first_render = False
                     continue
@@ -642,6 +688,8 @@ def fokus_run(args: argparse.Namespace) -> int:
                     print(msgs.paused_line(current_time=now, elapsed_seconds=elapsed))
                     continue
     except KeyboardInterrupt:
+        if getattr(args, "online", False) and nick and wrote_online_fokus:
+            storage.append_online_fokus_line(nick, "end")
         _finalize_render()
         now = dt.datetime.now()
         elapsed = (

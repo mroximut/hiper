@@ -573,3 +573,82 @@ def save_habits_csv(habits: List[Dict[str, object]]) -> str:
                 created_at_str = dt.datetime.now().isoformat()
             writer.writerow([name, frequency, created_at_str])
     return habits_csv
+
+
+# --- Online fokus (data_dir/online/NICKNAME.txt) ---
+
+def get_online_dir() -> str:
+    """Return data_dir/online, creating it if needed."""
+    data_dir = get_data_dir()
+    online_dir = os.path.join(data_dir, "online")
+    os.makedirs(online_dir, exist_ok=True)
+    return online_dir
+
+
+def _sanitize_nickname_for_filename(nickname: str) -> str:
+    """Return a safe filename base from nickname (no extension)."""
+    if not nickname or not nickname.strip():
+        return "unknown"
+    s = nickname.strip()
+    unsafe = '/\\:*?"<>|'
+    for c in unsafe:
+        s = s.replace(c, "_")
+    return s or "unknown"
+
+
+def append_online_fokus_line(nickname: str, line: str) -> None:
+    """Append a line to data_dir/online/NICKNAME.txt."""
+    online_dir = get_online_dir()
+    base = _sanitize_nickname_for_filename(nickname)
+    path = os.path.join(online_dir, base + ".txt")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def get_other_online_fokus_status(
+    current_nickname: str,
+) -> Optional[tuple[str, str, bool]]:
+    """If another user has an online fokus file, return (nickname, title, is_active).
+
+    is_active True => "NICKNAME is fokusing on TITLE right now"
+    is_active False => "NICKNAME has fokused on TITLE last time"
+    title may be empty. Returns None if no other user file or no fokus line found.
+    """
+    online_dir = get_online_dir()
+    current_base = _sanitize_nickname_for_filename(current_nickname)
+    if not os.path.isdir(online_dir):
+        return None
+
+    for name in os.listdir(online_dir):
+        if not name.endswith(".txt"):
+            continue
+        base = name[:-4]
+        if base == current_base:
+            continue
+        path = os.path.join(online_dir, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                lines = [ln.rstrip("\n\r") for ln in f.readlines()]
+        except OSError:
+            continue
+        rev = list(reversed(lines))
+        if not rev:
+            continue
+        last_line = rev[0].strip() if rev else ""
+        title = ""
+        for ln in rev:
+            s = ln.strip()
+            if s.startswith("fokus:"):
+                title = s[6:].strip()
+                break
+        if last_line == "end":
+            return (base, title, False)
+        # Last line is not "end" -> currently fokusing
+        for ln in rev:
+            s = ln.strip()
+            if s.startswith("fokus:"):
+                title = s[6:].strip()
+                return (base, title, True)
+    return None
