@@ -420,6 +420,7 @@ def fokus_run(args: argparse.Namespace) -> int:
 
     # Track if this is the first render (for estimate bar positioning)
     is_first_render = True
+    last_online_check_elapsed = -1
 
     # Initial render
     _tick_render(
@@ -447,6 +448,30 @@ def fokus_run(args: argparse.Namespace) -> int:
             # Update display every second when running
             if not paused:
                 if elapsed != last_whole:
+                    # Refresh online status every 10 secs
+                    if (
+                        getattr(args, "online", False)
+                        and nick
+                        and elapsed >= last_online_check_elapsed + 10
+                    ):
+                        last_online_check_elapsed = elapsed
+                        other = storage.get_other_online_fokus_status(nick)
+                        if other:
+                            other_nick, other_title, is_active = other
+                            if is_active:
+                                online_status_line = (
+                                    f":>{other_nick} is fokusing on {other_title} right now"
+                                    if other_title
+                                    else f":>{other_nick} is fokusing right now"
+                                )
+                            else:
+                                online_status_line = (
+                                    f":>{other_nick} has fokused on {other_title} last time"
+                                    if other_title
+                                    else f":>{other_nick} has fokused last time"
+                                )
+                        else:
+                            online_status_line = None
                     _tick_render(
                         elapsed,
                         goal_override,
