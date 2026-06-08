@@ -22,16 +22,39 @@ HABITS_CSV = os.path.join(DATA_DIR, "habits.csv")
 
 
 def _ensure_csv_header(path: str) -> None:
+    expected_header = [
+        "title",
+        "start",
+        "end",
+        "duration",
+        "duration_formatted",
+        "comment",
+    ]
     if not os.path.exists(path) or os.path.getsize(path) == 0:
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(
-                ["title", "start", "end", "duration", "duration_formatted"]
-            )  # duration in seconds
+            writer.writerow(expected_header)  # duration in seconds
+        return
+
+    with open(path, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None or "comment" in reader.fieldnames:
+            return
+        rows = list(reader)
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=expected_header)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in expected_header})
 
 
 def save_session_csv(
-    title: str, start: dt.datetime, end: dt.datetime, duration_seconds: int
+    title: str,
+    start: dt.datetime,
+    end: dt.datetime,
+    duration_seconds: int,
+    comment: str = "",
 ) -> str:
     data_dir = get_data_dir()
     sessions_csv = os.path.join(data_dir, "sessions.csv")
@@ -45,6 +68,7 @@ def save_session_csv(
                 end.isoformat(),
                 str(duration_seconds),
                 format_hms(duration_seconds),
+                comment or "",
             ]
         )
 
@@ -117,6 +141,7 @@ def load_sessions_csv() -> List[Dict[str, object]]:
             )
             end = dt.datetime.fromisoformat(row["end"]) if row.get("end") else None
             duration = int(row.get("duration", "0") or 0)
+            comment = row.get("comment", "")
             if start is None or end is None:
                 continue
             rows.append(
@@ -125,6 +150,7 @@ def load_sessions_csv() -> List[Dict[str, object]]:
                     "start": start,
                     "end": end,
                     "duration": duration,
+                    "comment": comment or "",
                 }
             )
     return rows

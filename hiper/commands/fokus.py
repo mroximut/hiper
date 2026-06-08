@@ -3,6 +3,7 @@ import datetime as dt
 import os
 import select
 import shlex
+import shutil
 import subprocess
 import sys
 import termios
@@ -38,9 +39,15 @@ def _format_duration(seconds: int) -> str:
 
 
 def _save_session_csv(
-    title: Optional[str], start: dt.datetime, end: dt.datetime, duration_s: int
+    title: Optional[str],
+    start: dt.datetime,
+    end: dt.datetime,
+    duration_s: int,
+    comment: Optional[str] = None,
 ) -> str:
-    return storage.save_session_csv(title or "", start, end, duration_s)
+    return storage.save_session_csv(
+        title or "", start, end, duration_s, comment=comment or ""
+    )
 
 
 def _handle_save(
@@ -48,10 +55,11 @@ def _handle_save(
     start: dt.datetime,
     end: dt.datetime,
     elapsed_s: int,
+    comment: Optional[str] = None,
 ) -> None:
     """Save the session and print confirmation messages."""
     _finalize_render()
-    path = _save_session_csv(title, start, end, elapsed_s)
+    path = _save_session_csv(title, start, end, elapsed_s, comment)
     print(msgs.saved_session_line(_format_duration(elapsed_s)))
     print(msgs.saved_path_line(path))
 
@@ -80,6 +88,61 @@ def _restore_mode(fd: Optional[int], old_settings: Optional[list[Any]]) -> None:
 
 def _print_header(start_time: dt.datetime):
     print(msgs.started_at_line(start_time))
+
+
+def _online_fokus_line(title: Optional[str], comment: Optional[str]) -> str:
+    status = title or ""
+    if comment:
+        status = f"{status} :: {comment}" if status else comment
+    return f"fokus: {status}".rstrip()
+
+
+def _format_online_status_line(nick: str, status: str, is_active: bool) -> str:
+    title, separator, comment = status.partition(" :: ")
+    title = title.strip()
+    comment = comment.strip() if separator else ""
+
+    if is_active:
+        if title and comment:
+            return f":>{nick} is fokusing on {title} with comment: {comment} right now"
+        if title:
+            return f":>{nick} is fokusing on {title} right now"
+        if comment:
+            return f":>{nick} is fokusing with comment: {comment} right now"
+        return f":>{nick} is fokusing right now"
+
+    if title and comment:
+        return f":>{nick} has fokused on {title} with comment: {comment} last time"
+    if title:
+        return f":>{nick} has fokused on {title} last time"
+    if comment:
+        return f":>{nick} has fokused with comment: {comment} last time"
+    return f":>{nick} has fokused last time"
+
+
+_last_render_rows = 0
+
+
+def _terminal_width() -> int:
+    return max(1, shutil.get_terminal_size(fallback=(80, 24)).columns)
+
+
+def _screen_rows_for_line(line: str, width: int) -> int:
+    return max(1, (len(line) + width - 1) // width)
+
+
+def _screen_rows_for_lines(lines: list[str]) -> int:
+    width = _terminal_width()
+    return sum(_screen_rows_for_line(line, width) for line in lines)
+
+
+def _clear_rendered_rows(row_count: int) -> None:
+    for row_index in range(row_count):
+        print("\033[2K", end="", flush=True)
+        if row_index < row_count - 1:
+            print("\033[1B\r", end="", flush=True)
+    if row_count > 1:
+        print(f"\033[{row_count - 1}A\r", end="", flush=True)
 
 
 def _tick_render(
@@ -212,20 +275,26 @@ def _tick_render(
     if online_status_line:
         lines_to_render.append(online_status_line)
 
-    num_lines = len(lines_to_render)
+    global _last_render_rows
+    current_render_rows = _screen_rows_for_lines(lines_to_render)
     output = "\n".join(lines_to_render) + "\n"
 
     if is_first_render:
         print(output, end="", flush=True)
     else:
-        # Move cursor up num_lines lines and rewrite
-        print(f"\033[{num_lines}A\r", end="", flush=True)
+        # Lines can wrap, so move by the rendered screen rows from the last tick.
+        previous_render_rows = _last_render_rows or current_render_rows
+        print(f"\033[{previous_render_rows}A\r", end="", flush=True)
+        _clear_rendered_rows(previous_render_rows)
         for render_line in lines_to_render:
             print(f"{render_line}\033[K\n", end="", flush=True)
+    _last_render_rows = current_render_rows
 
 
 def _finalize_render() -> None:
     """Finalize the current render line by printing a newline."""
+    global _last_render_rows
+    _last_render_rows = 0
     print()
 
 
@@ -297,6 +366,11 @@ def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
         default=None,
     )
     p.add_argument(
+        "--comment",
+        help="Optional comment for the session",
+        default=None,
+    )
+    p.add_argument(
         "--goal",
         "-g",
         help="Target duration for this session (e.g., 60m, 1h30m). Overrides --clock config.",
@@ -321,6 +395,8 @@ def fokus_configure_parser(p: argparse.ArgumentParser) -> None:
 
 
 def fokus_run(args: argparse.Namespace) -> int:
+    comment = getattr(args, "comment", None)
+
     # Validate goal parameter if provided
     goal_override: Optional[str] = None
     if args.goal:
@@ -394,19 +470,10 @@ def fokus_run(args: argparse.Namespace) -> int:
         other = storage.get_other_online_fokus_status(nick)
         if other:
             other_nick, other_title, is_active = other
-            if is_active:
-                online_status_line = (
-                    f":>{other_nick} is fokusing on {other_title} right now"
-                    if other_title
-                    else f":>{other_nick} is fokusing right now"
-                )
-            else:
-                online_status_line = (
-                    f":>{other_nick} has fokused on {other_title} last time"
-                    if other_title
-                    else f":>{other_nick} has fokused last time"
-                )
-        storage.append_online_fokus_line(nick, f"fokus: {args.title or ''}".rstrip())
+            online_status_line = _format_online_status_line(
+                other_nick, other_title, is_active
+            )
+        storage.append_online_fokus_line(nick, _online_fokus_line(args.title, comment))
         wrote_online_fokus = True
 
     # Running: detect space with raw mode; Paused: line input for commands
@@ -458,18 +525,9 @@ def fokus_run(args: argparse.Namespace) -> int:
                         other = storage.get_other_online_fokus_status(nick)
                         if other:
                             other_nick, other_title, is_active = other
-                            if is_active:
-                                online_status_line = (
-                                    f":>{other_nick} is fokusing on {other_title} right now"
-                                    if other_title
-                                    else f":>{other_nick} is fokusing right now"
-                                )
-                            else:
-                                online_status_line = (
-                                    f":>{other_nick} has fokused on {other_title} last time"
-                                    if other_title
-                                    else f":>{other_nick} has fokused last time"
-                                )
+                            online_status_line = _format_online_status_line(
+                                other_nick, other_title, is_active
+                            )
                         else:
                             online_status_line = None
                     _tick_render(
@@ -598,7 +656,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                         last_whole = -1
                         if getattr(args, "online", False) and nick:
                             storage.append_online_fokus_line(
-                                nick, f"fokus: {args.title or ''}".rstrip()
+                                nick, _online_fokus_line(args.title, comment)
                             )
                         is_first_render = True
                         _tick_render(
@@ -640,7 +698,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                 if cmd == "s":
                     if getattr(args, "online", False) and nick and wrote_online_fokus:
                         storage.append_online_fokus_line(nick, "end")
-                    _handle_save(args.title, start, now, elapsed)
+                    _handle_save(args.title, start, now, elapsed, comment)
                     break
 
                 is_save, title_override = _parse_save_command(cmd)
@@ -651,7 +709,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                     save_title = (
                         title_override if title_override is not None else args.title
                     )
-                    _handle_save(save_title, start, now, elapsed)
+                    _handle_save(save_title, start, now, elapsed, comment)
                     break
 
                 # Handle goal command (e.g., 'goal 5h')
@@ -704,7 +762,7 @@ def fokus_run(args: argparse.Namespace) -> int:
                     last_whole = -1
                     if getattr(args, "online", False) and nick:
                         storage.append_online_fokus_line(
-                            nick, f"fokus: {args.title or ''}".rstrip()
+                            nick, _online_fokus_line(args.title, comment)
                         )
                     is_first_render = True
                     _tick_render(

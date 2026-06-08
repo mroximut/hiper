@@ -271,7 +271,14 @@ def read_run(args: argparse.Namespace) -> int:
             start = _show_progress(args.title)
             if start:
                 # User wants to start reading - start a fokus session
-                fokus_args = argparse.Namespace(title=args.title, goal=None)
+                fokus_args = argparse.Namespace(
+                    title=args.title,
+                    comment=None,
+                    goal=None,
+                    strict=False,
+                    context=False,
+                    online=False,
+                )
                 return fokus_run(fokus_args)
             return 0
         else:
